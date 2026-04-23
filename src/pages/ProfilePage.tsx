@@ -1,12 +1,21 @@
 import React, { useState } from 'react'
 import { useApp } from '../context/AppContext'
 import PaletteDisplay from '../components/PaletteDisplay'
+import BodyStyleDisplay from '../components/BodyStyleDisplay'
+import MakeupDisplay from '../components/MakeupDisplay'
 import ProductModal from '../components/ProductModal'
 
+const ALL_RETAILERS = [
+  'Revolve', 'Aritzia', 'Free People', 'Mango', 'ASOS',
+  'Zara', 'Reformation', 'H&M', '& Other Stories', 'Everlane',
+  'J.Crew', 'Madewell', 'Steve Madden', 'Mejuri', 'Sephora',
+]
+
 export default function ProfilePage() {
-  const { userProfile, savedProducts, boards, setCurrentPage, selectedProduct, setSelectedProduct } =
+  const { userProfile, savedProducts, boards, setCurrentPage, selectedProduct, setSelectedProduct, updateRetailers } =
     useApp()
-  const [tab, setTab] = useState<'palette' | 'saved' | 'boards'>('palette')
+  const [tab, setTab] = useState<'palette' | 'saved' | 'boards' | 'stores'>('palette')
+  const [showAddStores, setShowAddStores] = useState(false)
 
   if (!userProfile) return null
 
@@ -53,6 +62,7 @@ export default function ProfilePage() {
               { id: 'palette', label: 'My Palette' },
               { id: 'saved', label: `Saved (${savedProducts.length})` },
               { id: 'boards', label: `Boards (${boards.length})` },
+              { id: 'stores', label: 'Stores' },
             ] as { id: typeof tab; label: string }[]).map((t) => (
               <button
                 key={t.id}
@@ -74,43 +84,50 @@ export default function ProfilePage() {
           <div className="space-y-8 animate-fade-in">
             <PaletteDisplay palette={userProfile.palette} />
 
-            {userProfile.bodyProfile && (
-              <div className="bg-white rounded-2xl p-5 border border-stone-100">
-                <h3 className="font-serif text-lg text-stone-900 mb-4">Body Profile</h3>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                  {userProfile.bodyProfile.bodyType && (
-                    <div className="bg-stone-50 rounded-xl p-3">
-                      <p className="text-xs text-stone-400 uppercase tracking-widest font-medium">Body Type</p>
-                      <p className="font-semibold text-stone-800 mt-1 capitalize">
-                        {userProfile.bodyProfile.bodyType.replace('-', ' ')}
-                      </p>
+            {/* Makeup recommendations */}
+            <div className="bg-white rounded-2xl p-5 border border-stone-100 space-y-5">
+              <h3 className="font-serif text-lg text-stone-900">Makeup Shades</h3>
+              <MakeupDisplay seasonalType={userProfile.palette.seasonalType} />
+            </div>
+
+            {userProfile.bodyProfile?.bodyType && (
+              <div className="bg-white rounded-2xl p-5 border border-stone-100 space-y-5">
+                <h3 className="font-serif text-lg text-stone-900">Style Profile</h3>
+                <BodyStyleDisplay bodyType={userProfile.bodyProfile.bodyType} />
+                {(userProfile.bodyProfile.height || userProfile.bodyProfile.bust ||
+                  userProfile.bodyProfile.waist || userProfile.bodyProfile.hips) && (
+                  <div className="pt-4 border-t border-stone-100">
+                    <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest mb-3">
+                      Measurements
+                    </p>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                      {userProfile.bodyProfile.height && (
+                        <div className="bg-stone-50 rounded-xl p-3">
+                          <p className="text-xs text-stone-400 uppercase tracking-widest font-medium">Height</p>
+                          <p className="font-semibold text-stone-800 mt-1">{userProfile.bodyProfile.height}</p>
+                        </div>
+                      )}
+                      {userProfile.bodyProfile.bust && (
+                        <div className="bg-stone-50 rounded-xl p-3">
+                          <p className="text-xs text-stone-400 uppercase tracking-widest font-medium">Bust</p>
+                          <p className="font-semibold text-stone-800 mt-1">{userProfile.bodyProfile.bust}"</p>
+                        </div>
+                      )}
+                      {userProfile.bodyProfile.waist && (
+                        <div className="bg-stone-50 rounded-xl p-3">
+                          <p className="text-xs text-stone-400 uppercase tracking-widest font-medium">Waist</p>
+                          <p className="font-semibold text-stone-800 mt-1">{userProfile.bodyProfile.waist}"</p>
+                        </div>
+                      )}
+                      {userProfile.bodyProfile.hips && (
+                        <div className="bg-stone-50 rounded-xl p-3">
+                          <p className="text-xs text-stone-400 uppercase tracking-widest font-medium">Hips</p>
+                          <p className="font-semibold text-stone-800 mt-1">{userProfile.bodyProfile.hips}"</p>
+                        </div>
+                      )}
                     </div>
-                  )}
-                  {userProfile.bodyProfile.height && (
-                    <div className="bg-stone-50 rounded-xl p-3">
-                      <p className="text-xs text-stone-400 uppercase tracking-widest font-medium">Height</p>
-                      <p className="font-semibold text-stone-800 mt-1">{userProfile.bodyProfile.height}</p>
-                    </div>
-                  )}
-                  {userProfile.bodyProfile.bust && (
-                    <div className="bg-stone-50 rounded-xl p-3">
-                      <p className="text-xs text-stone-400 uppercase tracking-widest font-medium">Bust</p>
-                      <p className="font-semibold text-stone-800 mt-1">{userProfile.bodyProfile.bust}"</p>
-                    </div>
-                  )}
-                  {userProfile.bodyProfile.waist && (
-                    <div className="bg-stone-50 rounded-xl p-3">
-                      <p className="text-xs text-stone-400 uppercase tracking-widest font-medium">Waist</p>
-                      <p className="font-semibold text-stone-800 mt-1">{userProfile.bodyProfile.waist}"</p>
-                    </div>
-                  )}
-                  {userProfile.bodyProfile.hips && (
-                    <div className="bg-stone-50 rounded-xl p-3">
-                      <p className="text-xs text-stone-400 uppercase tracking-widest font-medium">Hips</p>
-                      <p className="font-semibold text-stone-800 mt-1">{userProfile.bodyProfile.hips}"</p>
-                    </div>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -229,6 +246,94 @@ export default function ProfilePage() {
                   </button>
                 ))}
               </div>
+            )}
+          </div>
+        )}
+      </div>
+
+        {/* Stores tab */}
+        {tab === 'stores' && (
+          <div className="animate-fade-in space-y-6">
+            <div className="bg-white rounded-2xl p-5 border border-stone-100">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="font-serif text-lg text-stone-900">Your Stores</h3>
+                  <p className="text-xs text-stone-400 mt-0.5">
+                    Your feed only shows products from these retailers.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowAddStores((v) => !v)}
+                  className="px-3.5 py-1.5 text-xs font-semibold bg-stone-900 text-white rounded-full hover:bg-stone-800 transition-colors"
+                >
+                  {showAddStores ? 'Done' : '+ Add'}
+                </button>
+              </div>
+
+              {/* Current retailers */}
+              {(userProfile.favoriteRetailers ?? []).length === 0 ? (
+                <p className="text-sm text-stone-400 py-2">No stores selected yet.</p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {(userProfile.favoriteRetailers ?? []).map((r) => (
+                    <span
+                      key={r}
+                      className="flex items-center gap-1.5 pl-3 pr-2 py-1.5 bg-stone-900 text-white text-xs font-medium rounded-full"
+                    >
+                      {r}
+                      <button
+                        onClick={() =>
+                          updateRetailers(
+                            (userProfile.favoriteRetailers ?? []).filter((x) => x !== r)
+                          )
+                        }
+                        className="w-4 h-4 flex items-center justify-center rounded-full hover:bg-white/20 transition-colors text-white/70 hover:text-white"
+                        aria-label={`Remove ${r}`}
+                      >
+                        ✕
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {/* Add stores panel */}
+              {showAddStores && (
+                <div className="mt-4 pt-4 border-t border-stone-100">
+                  <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest mb-3">
+                    Add a store
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {ALL_RETAILERS.filter(
+                      (r) => !(userProfile.favoriteRetailers ?? []).includes(r)
+                    ).map((r) => (
+                      <button
+                        key={r}
+                        onClick={() =>
+                          updateRetailers([...(userProfile.favoriteRetailers ?? []), r])
+                        }
+                        className="px-3.5 py-1.5 text-xs font-medium bg-white border border-stone-200 text-stone-600 rounded-full hover:border-stone-900 hover:text-stone-900 transition-colors"
+                      >
+                        + {r}
+                      </button>
+                    ))}
+                    {ALL_RETAILERS.every((r) =>
+                      (userProfile.favoriteRetailers ?? []).includes(r)
+                    ) && (
+                      <p className="text-xs text-stone-400">All stores already added.</p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {(userProfile.favoriteRetailers ?? []).length > 0 && (
+              <button
+                onClick={() => setCurrentPage('feed')}
+                className="w-full py-3 bg-stone-900 text-white text-sm font-semibold rounded-xl hover:bg-stone-800 transition-colors"
+              >
+                Browse Your Feed →
+              </button>
             )}
           </div>
         )}

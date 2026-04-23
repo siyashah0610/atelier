@@ -15,11 +15,14 @@ export type SeasonalType =
 export interface ColorPalette {
   seasonalType: SeasonalType
   description: string
-  dominantColors: string[]
+  undertone: 'warm' | 'cool' | 'neutral'
+  confidenceScore?: number
+  dominantColors: string[]   // statement / best colors for the season
+  coolColors?: string[]      // blues, purples, teals
+  warmColors?: string[]      // reds, oranges, earthy tones
   neutrals: string[]
   toAvoid: string[]
   metals: ('silver' | 'gold' | 'rose gold')[]
-  undertone: 'warm' | 'cool' | 'neutral'
   allHexCodes: string[]
 }
 

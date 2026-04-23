@@ -22,6 +22,7 @@ interface AppState {
   removeFromBoard: (boardId: string, productId: string) => void
   toggleBoardVisibility: (boardId: string) => void
   deleteBoard: (boardId: string) => void
+  updateRetailers: (retailers: string[]) => void
 }
 
 const AppContext = createContext<AppState | null>(null)
@@ -148,6 +149,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setBoards((prev) => prev.filter((b) => b.id !== boardId))
   }, [])
 
+  const updateRetailers = useCallback((retailers: string[]) => {
+    setUserProfileState((prev) => {
+      if (!prev) return prev
+      return { ...prev, favoriteRetailers: retailers }
+    })
+  }, [])
+
   return (
     <AppContext.Provider
       value={{
@@ -171,6 +179,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         removeFromBoard,
         toggleBoardVisibility,
         deleteBoard,
+        updateRetailers,
       }}
     >
       {children}

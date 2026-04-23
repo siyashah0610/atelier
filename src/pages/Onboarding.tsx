@@ -1,8 +1,10 @@
-import React, { useState, useRef } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import { useApp } from '../context/AppContext'
 import { ColorPalette, UserProfile } from '../types'
 import { resizeImageToBase64 } from '../utils/colorUtils'
 import PaletteDisplay from '../components/PaletteDisplay'
+import BodyStyleDisplay from '../components/BodyStyleDisplay'
+import MakeupDisplay from '../components/MakeupDisplay'
 
 const RETAILERS = [
   'Revolve', 'Aritzia', 'Free People', 'Mango', 'ASOS',
@@ -31,12 +33,83 @@ export default function Onboarding() {
   const [name, setName] = useState('')
   const [username, setUsername] = useState('')
   const [selectedRetailers, setSelectedRetailers] = useState<string[]>([])
+  const [warnings, setWarnings] = useState<string[]>([])
   const [bodyType, setBodyType] = useState('')
   const [height, setHeight] = useState('')
   const [bust, setBust] = useState('')
   const [waist, setWaist] = useState('')
   const [hips, setHips] = useState('')
+  const [cameraOpen, setCameraOpen] = useState(false)
+  const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user')
+  const [cameraError, setCameraError] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const streamRef = useRef<MediaStream | null>(null)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+
+  // Attach stream to video element once camera modal is rendered
+  useEffect(() => {
+    if (cameraOpen && videoRef.current && streamRef.current) {
+      videoRef.current.srcObject = streamRef.current
+    }
+  }, [cameraOpen])
+
+  // Clean up stream on unmount
+  useEffect(() => {
+    return () => { streamRef.current?.getTracks().forEach((t) => t.stop()) }
+  }, [])
+
+  const openCamera = async () => {
+    setCameraError(null)
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode, width: { ideal: 1280 }, height: { ideal: 960 } },
+        audio: false,
+      })
+      streamRef.current = stream
+      setCameraOpen(true)
+    } catch {
+      setCameraError('Camera access was denied. Please allow camera permissions and try again.')
+    }
+  }
+
+  const closeCamera = () => {
+    streamRef.current?.getTracks().forEach((t) => t.stop())
+    streamRef.current = null
+    setCameraOpen(false)
+  }
+
+  const capturePhoto = () => {
+    const video = videoRef.current
+    const canvas = canvasRef.current
+    if (!video || !canvas) return
+    canvas.width = video.videoWidth
+    canvas.height = video.videoHeight
+    const ctx = canvas.getContext('2d')!
+    ctx.drawImage(video, 0, 0)
+    canvas.toBlob((blob) => {
+      if (!blob) return
+      const file = new File([blob], `photo-${Date.now()}.jpg`, { type: 'image/jpeg' })
+      const url = URL.createObjectURL(blob)
+      setFiles((prev) => [...prev, file])
+      setPreviews((prev) => [...prev, url])
+      closeCamera()
+    }, 'image/jpeg', 0.9)
+  }
+
+  const flipCamera = async () => {
+    const next = facingMode === 'user' ? 'environment' : 'user'
+    setFacingMode(next)
+    streamRef.current?.getTracks().forEach((t) => t.stop())
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: next, width: { ideal: 1280 }, height: { ideal: 960 } },
+        audio: false,
+      })
+      streamRef.current = stream
+      if (videoRef.current) videoRef.current.srcObject = stream
+    } catch { closeCamera() }
+  }
 
   const addFiles = (newFiles: FileList | null) => {
     if (!newFiles) return
@@ -68,9 +141,10 @@ export default function Onboarding() {
         body: JSON.stringify({ images }),
       })
       const data = await res.json()
-      setPalette(data as ColorPalette)
+      const { warnings: w = [], ...paletteData } = data
+      setWarnings(w)
+      setPalette(paletteData as ColorPalette)
     } catch {
-      // Fallback palette if anything fails
       setPalette({
         seasonalType: 'Soft Autumn',
         description:
@@ -124,10 +198,11 @@ export default function Onboarding() {
     )
 
   const progress = {
-    intro: 0, upload: 20, analyzing: 40, reveal: 55, body: 70, retailers: 85, done: 100,
+    intro: 0, upload: 20, analyzing: 40, reveal: 55, body: 72, retailers: 88, done: 100,
   }[step]
 
   return (
+    <>
     <div className="min-h-screen bg-[#FAFAF7]">
       {/* Progress bar */}
       <div className="h-1 bg-stone-100">
@@ -224,16 +299,32 @@ export default function Onboarding() {
               className="hidden"
               onChange={(e) => addFiles(e.target.files)}
             />
-            <button
-              onClick={() => fileRef.current?.click()}
-              className="w-full border-2 border-dashed border-stone-300 rounded-2xl py-10 text-center hover:border-stone-400 transition-colors"
-            >
-              <div className="text-3xl mb-2">📷</div>
-              <p className="text-sm font-medium text-stone-700">
-                {files.length === 0 ? 'Tap to add photos' : `Add more (${files.length}/10)`}
-              </p>
-              <p className="text-xs text-stone-400 mt-1">5–10 photos recommended</p>
-            </button>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                onClick={openCamera}
+                disabled={files.length >= 10}
+                className="border-2 border-stone-200 rounded-2xl py-8 text-center hover:border-stone-400 transition-colors disabled:opacity-40 flex flex-col items-center gap-2"
+              >
+                <span className="text-2xl">📸</span>
+                <p className="text-sm font-medium text-stone-700">Take a photo</p>
+                <p className="text-xs text-stone-400">Live camera</p>
+              </button>
+              <button
+                onClick={() => fileRef.current?.click()}
+                disabled={files.length >= 10}
+                className="border-2 border-stone-200 rounded-2xl py-8 text-center hover:border-stone-400 transition-colors disabled:opacity-40 flex flex-col items-center gap-2"
+              >
+                <span className="text-2xl">🖼️</span>
+                <p className="text-sm font-medium text-stone-700">Upload photos</p>
+                <p className="text-xs text-stone-400">From library</p>
+              </button>
+            </div>
+            {cameraError && (
+              <p className="text-xs text-rose-500 text-center">{cameraError}</p>
+            )}
+            {files.length > 0 && (
+              <p className="text-xs text-center text-stone-400">{files.length}/10 photos added</p>
+            )}
 
             {/* Previews */}
             {previews.length > 0 && (
@@ -296,18 +387,45 @@ export default function Onboarding() {
         )}
 
         {/* ── Step: Reveal ── */}
+        {/* ── Step: Reveal — Color & Makeup ── */}
         {step === 'reveal' && palette && (
           <div className="space-y-8 animate-fade-in">
             <div>
               <p className="text-xs text-stone-400 uppercase tracking-widest font-medium mb-2">
-                Step 3 of 5 — Your Palette
+                Step 3 of 5 — Color Analysis
               </p>
               <h1 className="font-serif text-3xl text-stone-900">
                 You're a{' '}
                 <span className="italic">{palette.seasonalType}</span>
               </h1>
             </div>
+
+            {warnings.length > 0 && (
+              <div className="bg-amber-50 border border-amber-100 rounded-xl p-4 space-y-1">
+                <p className="text-xs font-semibold text-amber-700 uppercase tracking-widest mb-2">
+                  Photo quality notes
+                </p>
+                {warnings.map((w, i) => (
+                  <p key={i} className="text-xs text-amber-700 leading-relaxed">· {w}</p>
+                ))}
+                <p className="text-xs text-amber-600 mt-2">
+                  Better photos will improve accuracy — you can redo your analysis anytime from your profile.
+                </p>
+              </div>
+            )}
+
             <PaletteDisplay palette={palette} />
+
+            <div className="border-t border-stone-100 pt-6 space-y-4">
+              <div>
+                <h2 className="font-serif text-2xl text-stone-900">Your makeup shades.</h2>
+                <p className="text-stone-500 mt-1.5 text-sm leading-relaxed">
+                  Foundation, blush, contour, and lip colors matched to your exact coloring.
+                </p>
+              </div>
+              <MakeupDisplay seasonalType={palette.seasonalType} />
+            </div>
+
             <button
               onClick={() => setStep('body')}
               className="w-full py-3.5 bg-stone-900 text-white text-sm font-semibold rounded-xl hover:bg-stone-800 transition-colors"
@@ -317,33 +435,31 @@ export default function Onboarding() {
           </div>
         )}
 
-        {/* ── Step: Body ── */}
+        {/* ── Step: Body — Shape & Style ── */}
         {step === 'body' && (
           <div className="space-y-6 animate-fade-in">
             <div>
               <p className="text-xs text-stone-400 uppercase tracking-widest font-medium mb-2">
-                Step 4 of 5 — Body Profile (Optional)
+                Step 4 of 5 — Style Profile
               </p>
-              <h1 className="font-serif text-3xl text-stone-900">
-                Perfect fit, every time.
-              </h1>
+              <h1 className="font-serif text-3xl text-stone-900">Dress your best.</h1>
               <p className="text-stone-500 mt-2 text-sm leading-relaxed">
-                Add your measurements so we can filter cuts and silhouettes that flatter your shape.
-                This is completely optional and never shown publicly.
+                Select your body shape to see the silhouettes and styles that flatter you most.
               </p>
             </div>
 
+            {/* Body shape selector */}
             <div>
               <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest mb-3">
-                Body Type
+                Body Shape
               </p>
               <div className="grid grid-cols-3 gap-2">
                 {[
-                  { id: 'pear', label: 'Pear', emoji: '🍐' },
-                  { id: 'hourglass', label: 'Hourglass', emoji: '⏳' },
-                  { id: 'rectangle', label: 'Rectangle', emoji: '▬' },
-                  { id: 'inverted-triangle', label: 'Inv. Triangle', emoji: '▽' },
-                  { id: 'apple', label: 'Apple', emoji: '🍎' },
+                  { id: 'pear',              label: 'Pear',          emoji: '🍐' },
+                  { id: 'hourglass',         label: 'Hourglass',     emoji: '⏳' },
+                  { id: 'rectangle',         label: 'Rectangle',     emoji: '▬'  },
+                  { id: 'inverted-triangle', label: 'Inv. Triangle', emoji: '▽'  },
+                  { id: 'apple',             label: 'Apple',         emoji: '🍎' },
                 ].map((type) => (
                   <button
                     key={type.id}
@@ -361,25 +477,39 @@ export default function Onboarding() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              {[
-                { label: 'Height', val: height, set: setHeight, placeholder: 'e.g. 5\'7"' },
-                { label: 'Bust (in)', val: bust, set: setBust, placeholder: 'e.g. 36' },
-                { label: 'Waist (in)', val: waist, set: setWaist, placeholder: 'e.g. 28' },
-                { label: 'Hips (in)', val: hips, set: setHips, placeholder: 'e.g. 38' },
-              ].map((field) => (
-                <div key={field.label}>
-                  <label className="block text-xs font-medium text-stone-500 mb-1">
-                    {field.label}
-                  </label>
-                  <input
-                    value={field.val}
-                    onChange={(e) => field.set(e.target.value)}
-                    placeholder={field.placeholder}
-                    className="w-full px-3 py-2.5 border border-stone-200 rounded-xl text-sm focus:outline-none focus:border-stone-400 bg-white"
-                  />
-                </div>
-              ))}
+            {/* Avatar + style recommendations */}
+            {bodyType && <BodyStyleDisplay key={bodyType} bodyType={bodyType} />}
+
+            {/* Optional measurements */}
+            <div className="space-y-3 pt-4 border-t border-stone-100">
+              <div>
+                <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest mb-1">
+                  Measurements (Optional)
+                </p>
+                <p className="text-xs text-stone-400 leading-relaxed">
+                  Used to refine fit recommendations — never shown publicly.
+                </p>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                {[
+                  { label: 'Height',    val: height, set: setHeight, placeholder: "e.g. 5'7\"" },
+                  { label: 'Bust (in)', val: bust,   set: setBust,   placeholder: 'e.g. 36'    },
+                  { label: 'Waist (in)',val: waist,  set: setWaist,  placeholder: 'e.g. 28'    },
+                  { label: 'Hips (in)', val: hips,   set: setHips,   placeholder: 'e.g. 38'    },
+                ].map((field) => (
+                  <div key={field.label}>
+                    <label className="block text-xs font-medium text-stone-500 mb-1">
+                      {field.label}
+                    </label>
+                    <input
+                      value={field.val}
+                      onChange={(e) => field.set(e.target.value)}
+                      placeholder={field.placeholder}
+                      className="w-full px-3 py-2.5 border border-stone-200 rounded-xl text-sm focus:outline-none focus:border-stone-400 bg-white"
+                    />
+                  </div>
+                ))}
+              </div>
             </div>
 
             <div className="flex flex-col gap-2">
@@ -438,5 +568,69 @@ export default function Onboarding() {
         )}
       </div>
     </div>
+
+    {/* ── Camera overlay ── */}
+
+    {cameraOpen && (
+      <div className="fixed inset-0 z-50 bg-black flex flex-col">
+        {/* Video feed */}
+        <div className="flex-1 relative overflow-hidden">
+          <video
+            ref={videoRef}
+            autoPlay
+            playsInline
+            muted
+            className="absolute inset-0 w-full h-full object-cover"
+            style={{ transform: facingMode === 'user' ? 'scaleX(-1)' : 'none' }}
+          />
+          {/* Face guide oval */}
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <svg viewBox="0 0 300 360" className="w-64 h-80 opacity-50">
+              <ellipse
+                cx="150" cy="180" rx="120" ry="155"
+                fill="none" stroke="white" strokeWidth="2" strokeDasharray="8 6"
+              />
+            </svg>
+          </div>
+          {/* Top hint */}
+          <div className="absolute top-6 left-0 right-0 flex justify-center pointer-events-none">
+            <span className="text-white/70 text-xs bg-black/30 px-3 py-1.5 rounded-full backdrop-blur-sm">
+              Position your face in the guide
+            </span>
+          </div>
+        </div>
+
+        {/* Controls bar */}
+        <div className="bg-black/90 py-8 px-8 flex items-center justify-between safe-area-bottom">
+          {/* Close */}
+          <button
+            onClick={closeCamera}
+            className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center text-white text-xl"
+          >
+            ✕
+          </button>
+
+          {/* Shutter */}
+          <button
+            onClick={capturePhoto}
+            className="w-20 h-20 rounded-full border-4 border-white/60 bg-transparent flex items-center justify-center"
+          >
+            <div className="w-14 h-14 rounded-full bg-white" />
+          </button>
+
+          {/* Flip */}
+          <button
+            onClick={flipCamera}
+            className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center text-white text-xl"
+          >
+            ⟳
+          </button>
+        </div>
+
+        {/* Hidden capture canvas */}
+        <canvas ref={canvasRef} className="hidden" />
+      </div>
+    )}
+    </>
   )
 }
