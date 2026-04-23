@@ -14,7 +14,7 @@ const ALL_RETAILERS = [
 export default function ProfilePage() {
   const { userProfile, savedProducts, boards, setCurrentPage, selectedProduct, setSelectedProduct, updateRetailers } =
     useApp()
-  const [tab, setTab] = useState<'palette' | 'saved' | 'boards' | 'stores'>('palette')
+  const [tab, setTab] = useState<'palette' | 'style' | 'saved' | 'boards' | 'stores'>('palette')
   const [showAddStores, setShowAddStores] = useState(false)
 
   if (!userProfile) return null
@@ -60,6 +60,7 @@ export default function ProfilePage() {
           <div className="flex gap-1 mt-5 border border-stone-100 rounded-xl p-1 bg-stone-50">
             {([
               { id: 'palette', label: 'My Palette' },
+              { id: 'style', label: 'My Style' },
               { id: 'saved', label: `Saved (${savedProducts.length})` },
               { id: 'boards', label: `Boards (${boards.length})` },
               { id: 'stores', label: 'Stores' },
@@ -90,9 +91,26 @@ export default function ProfilePage() {
               <MakeupDisplay seasonalType={userProfile.palette.seasonalType} />
             </div>
 
+            <button
+              onClick={() => {
+                if (confirm('Reset your analysis? This will clear your palette and take you back to onboarding.')) {
+                  localStorage.clear()
+                  window.location.reload()
+                }
+              }}
+              className="text-xs text-stone-400 hover:text-rose-500 transition-colors"
+            >
+              Redo color analysis
+            </button>
+          </div>
+        )}
+
+        {/* Style tab */}
+        {tab === 'style' && (
+          <div className="space-y-8 animate-fade-in">
             {userProfile.bodyProfile?.bodyType && (
               <div className="bg-white rounded-2xl p-5 border border-stone-100 space-y-5">
-                <h3 className="font-serif text-lg text-stone-900">Style Profile</h3>
+                <h3 className="font-serif text-lg text-stone-900">Body Type & Style Profile</h3>
                 <BodyStyleDisplay bodyType={userProfile.bodyProfile.bodyType} />
                 {(userProfile.bodyProfile.height || userProfile.bodyProfile.bust ||
                   userProfile.bodyProfile.waist || userProfile.bodyProfile.hips) && (
@@ -131,17 +149,15 @@ export default function ProfilePage() {
               </div>
             )}
 
-            <button
-              onClick={() => {
-                if (confirm('Reset your analysis? This will clear your palette and take you back to onboarding.')) {
-                  localStorage.clear()
-                  window.location.reload()
-                }
-              }}
-              className="text-xs text-stone-400 hover:text-rose-500 transition-colors"
-            >
-              Redo color analysis
-            </button>
+            {!userProfile.bodyProfile?.bodyType && (
+              <div className="text-center py-16">
+                <p className="text-4xl mb-4">👗</p>
+                <h2 className="font-serif text-xl text-stone-700 mb-2">No style profile yet</h2>
+                <p className="text-sm text-stone-400 mb-6">
+                  Complete your body type analysis during onboarding to see personalized style recommendations.
+                </p>
+              </div>
+            )}
           </div>
         )}
 
@@ -249,9 +265,7 @@ export default function ProfilePage() {
             )}
           </div>
         )}
-      </div>
-
-        {/* Stores tab */}
+          {/* Stores tab */}
         {tab === 'stores' && (
           <div className="animate-fade-in space-y-6">
             <div className="bg-white rounded-2xl p-5 border border-stone-100">

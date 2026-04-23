@@ -26,8 +26,9 @@ export default function FeedPage() {
   const [search, setSearch]       = useState('')
 
   const retailers = userProfile?.favoriteRetailers ?? []
-  const palette   = userProfile?.palette
-  const bodyType  = userProfile?.bodyProfile?.bodyType
+  const palette = userProfile?.palette
+  const bodyType = userProfile?.bodyProfile?.bodyType
+  const fabricKeywords = ['silk', 'linen', 'denim', 'leather', 'suede', 'lace', 'cotton', 'velvet', 'chiffon']
 
   useEffect(() => {
     if (!retailers.length) {
@@ -65,15 +66,15 @@ export default function FeedPage() {
       arr = arr.filter((p) => (p.matchScore ?? 0) >= MIN_SCORE)
     }
 
-    // Body-type soft filter — show matching items first but don't hide others
-    if (bodyType) {
-      const tag = `${bodyType}-friendly`
-      arr.sort((a, b) => {
-        const aMatch = a.bodyTypeTags?.includes(tag) || a.bodyTypeTags?.includes(bodyType) ? 1 : 0
-        const bMatch = b.bodyTypeTags?.includes(tag) || b.bodyTypeTags?.includes(bodyType) ? 1 : 0
-        return bMatch - aMatch
-      })
-    }
+    // Body-type and fabric match ranking — prioritize products that fit your shape and wardrobe details.
+    const styleTag = bodyType ? `${bodyType}-friendly` : undefined
+    arr.sort((a, b) => {
+      const aStyle = styleTag && (a.bodyTypeTags?.includes(styleTag) || (bodyType ? a.bodyTypeTags?.includes(bodyType) : false)) ? 1 : 0
+      const bStyle = styleTag && (b.bodyTypeTags?.includes(styleTag) || (bodyType ? b.bodyTypeTags?.includes(bodyType) : false)) ? 1 : 0
+      const aFabric = fabricKeywords.some((keyword) => a.tags.includes(keyword)) ? 1 : 0
+      const bFabric = fabricKeywords.some((keyword) => b.tags.includes(keyword)) ? 1 : 0
+      return (bStyle + bFabric) - (aStyle + aFabric)
+    })
 
     return arr
   }, [products, palette, bodyType])
