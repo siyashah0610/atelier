@@ -7,6 +7,8 @@
  * Getting a key: https://www.shopstylecollective.com/api/overview
  */
 
+import process from 'process'
+import { computeMatchScore } from '../../src/utils/colorUtils.js'
 import { Product, ProductCategory } from '../../src/types/index.js'
 
 const BASE = 'https://api.shopstyle.com/api/v2'
@@ -93,17 +95,54 @@ function inferCategory(name: string, cats: string[]): ProductCategory {
   return 'clothing'
 }
 
-interface SSProduct {
-  id: string; name: string; price: number; salePrice?: number
-  brand: { name: string }; retailer: { name: string }
-  image: { sizes: { Best?: { url: string }; Large?: { url: string } } }
-  colors?: { name: string }[]
-  categories?: { name: string }[]
-  clickUrl: string
+const CATEGORY_SEARCHES: Record<ProductCategory, string[]> = {
+  clothing: ['women dresses', 'women tops', 'women pants', 'women skirts', 'women jackets'],
+  shoes: ['women shoes', 'women boots', 'women sandals', 'women sneakers'],
+  jewelry: ['necklace', 'ring', 'bracelet', 'earring', 'pendant'],
+  bags: ['tote', 'handbag', 'clutch', 'crossbody', 'satchel'],
+  makeup: ['lipstick', 'foundation', 'mascara', 'eyeshadow', 'blush'],
+}
+
+const FABRIC_TAGS = ['silk', 'linen', 'denim', 'leather', 'suede', 'lace', 'cotton', 'velvet', 'chiffon']
+
+interface FetchOptions {
+  category?: ProductCategory
+  paletteHexes?: string[]
+  styleKeywords?: string[]
+  minScore?: number
+}
+
+function extractTagsFromText(text: string): string[] {
+  return text
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean)
+}
+
+function normalizeTags(name: string, cats: string[], colors?: { name: string }[]) {
+  const tags = new Set<string>(cats.map((c) => c.toLowerCase()))
+  extractTagsFromText(name).forEach((tag) => tags.add(tag))
+  for (const color of colors ?? []) {
+    const key = color.name.toLowerCase()
+    if (COLOR_HEX[key]) tags.add(key)
+  }
+  FABRIC_TAGS.forEach((fabric) => {
+    if (name.toLowerCase().includes(fabric) || cats.some((cat) => cat.toLowerCase().includes(fabric))) {
+      tags.add(fabric)
+    }
+  })
+  return [...tags]
+}
+
+function styleKeywordMatch(product: Product, keywords: string[]) {
+  const lowered = keywords.map((k) => k.toLowerCase())
+  const haystack = [product.name, ...(product.tags ?? [])].join(' ').toLowerCase()
+  return lowered.some((keyword) => haystack.includes(keyword))
 }
 
 function normalize(p: SSProduct): Product {
   const cats = p.categories?.map((c) => c.name) ?? []
+  const tags = normalizeTags(p.name, cats, p.colors)
   return {
     id:           `ss_${p.id}`,
     name:         p.name,
@@ -117,10 +156,19 @@ function normalize(p: SSProduct): Product {
     rating:       +(3.8 + Math.random() * 1.1).toFixed(1),
     reviewCount:  Math.floor(40 + Math.random() * 400),
     affiliateUrl: p.clickUrl,
-    tags:         cats.map((c) => c.toLowerCase()),
+    tags,
     bodyTypeTags: [],
-    aspectRatio:  'tall',
+    aspectRatio: 'tall',
   }
+}
+
+interface SSProduct {
+  id: string; name: string; price: number; salePrice?: number
+  brand: { name: string }; retailer: { name: string }
+  image: { sizes: { Best?: { url: string }; Large?: { url: string } } }
+  colors?: { name: string }[]
+  categories?: { name: string }[]
+  clickUrl: string
 }
 
 // ─── Retailer-ID cache (fetched once) ────────────────────────────────────────
@@ -142,10 +190,11 @@ async function retailerMap(): Promise<Map<string, number>> {
 const _cache = new Map<string, { ts: number; products: Product[] }>()
 const TTL = 30 * 60 * 1000
 
-export async function fetchProducts(retailers: string[], limit = 80): Promise<Product[]> {
+export async function fetchProducts(retailers: string[], options: FetchOptions = {}, limit = 80): Promise<Product[]> {
   if (!KEY) return []
 
-  const cacheKey = [...retailers].sort().join('|')
+  const { category, paletteHexes = [], styleKeywords = [], minScore = 45 } = options
+  const cacheKey = [...retailers].sort().join('|') + '|' + category + '|' + styleKeywords.join(',')
   const hit = _cache.get(cacheKey)
   if (hit && Date.now() - hit.ts < TTL) return hit.products
 
@@ -159,10 +208,11 @@ export async function fetchProducts(retailers: string[], limit = 80): Promise<Pr
     if (!filters.length) return []
 
     const fl = filters.join(',')
-    const perQuery = Math.ceil(limit / 4)
+    const searchQueries = category ? CATEGORY_SEARCHES[category] : Object.values(CATEGORY_SEARCHES).flat()
+    const perQuery = Math.ceil(limit / Math.max(searchQueries.length, 1))
 
     const results = await Promise.all(
-      ['women dresses', 'women tops', 'women pants', 'women shoes'].map((q) =>
+      searchQueries.map((q) =>
         fetch(`${BASE}/products?pid=${KEY}&fts=${encodeURIComponent(q)}&fl=${fl}&offset=0&limit=${perQuery}&format=json`)
           .then((r) => r.json())
           .then((d: { products?: SSProduct[] }) => (d.products ?? []).map(normalize))
@@ -171,7 +221,21 @@ export async function fetchProducts(retailers: string[], limit = 80): Promise<Pr
     )
 
     const seen = new Set<string>()
-    const products = results.flat().filter((p) => !seen.has(p.id) && seen.add(p.id))
+    let products = results.flat().filter((p) => !seen.has(p.id) && seen.add(p.id))
+
+    if (paletteHexes.length) {
+      products = products.map((p) => ({
+        ...p,
+        matchScore: computeMatchScore(p.hexColors, paletteHexes),
+      }))
+      products = products.filter((p) => (p.matchScore ?? 0) >= minScore)
+    }
+
+    if (styleKeywords.length) {
+      const matches = products.filter((p) => styleKeywordMatch(p, styleKeywords))
+      if (matches.length) products = matches
+    }
+
     _cache.set(cacheKey, { ts: Date.now(), products })
     return products
   } catch {

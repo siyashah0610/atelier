@@ -34,6 +34,7 @@ export default function Header() {
           <>
             <nav className="hidden sm:flex items-center gap-7">
               {navLink('feed', 'Discover')}
+              {navLink('check', 'Check Item')}
               {navLink('boards', 'Boards')}
               {navLink('profile', 'Profile')}
             </nav>
@@ -76,7 +77,7 @@ export default function Header() {
       {/* Mobile nav */}
       {hasProfile && (
         <div className="sm:hidden flex border-t border-stone-100">
-          {(['feed', 'boards', 'profile', 'cart'] as Page[]).map((page) => (
+          {(['feed', 'check', 'boards', 'profile', 'cart'] as Page[]).map((page) => (
             <button
               key={page}
               onClick={() => setCurrentPage(page)}
@@ -84,7 +85,7 @@ export default function Header() {
                 currentPage === page ? 'text-stone-900 bg-stone-50' : 'text-stone-500'
               }`}
             >
-              {page === 'feed' ? 'discover' : page}
+              {page === 'feed' ? 'discover' : page === 'check' ? 'check' : page}
               {page === 'cart' && cartCount > 0 && (
                 <span className="ml-1 text-[10px] bg-stone-900 text-white rounded-full px-1">
                   {cartCount}

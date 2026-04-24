@@ -7,6 +7,7 @@ import FeedPage from './pages/FeedPage'
 import BoardsPage from './pages/BoardsPage'
 import ProfilePage from './pages/ProfilePage'
 import CartPage from './pages/CartPage'
+import CheckPage from './pages/CheckPage'
 
 function Pages() {
   const { currentPage } = useApp()
@@ -17,6 +18,7 @@ function Pages() {
       {currentPage === 'landing' && <Landing />}
       {currentPage === 'onboarding' && <Onboarding />}
       {currentPage === 'feed' && <FeedPage />}
+      {currentPage === 'check' && <CheckPage />}
       {currentPage === 'boards' && <BoardsPage />}
       {currentPage === 'profile' && <ProfilePage />}
       {currentPage === 'cart' && <CartPage />}

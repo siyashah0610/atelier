@@ -29,6 +29,17 @@ export default function FeedPage() {
   const palette = userProfile?.palette
   const bodyType = userProfile?.bodyProfile?.bodyType
   const fabricKeywords = ['silk', 'linen', 'denim', 'leather', 'suede', 'lace', 'cotton', 'velvet', 'chiffon']
+  const styleKeywordMap: Record<string, string[]> = {
+    pear: ['a-line', 'fit-and-flare', 'wrap', 'structured', 'flowy'],
+    hourglass: ['waist-defining', 'bodycon', 'tailored', 'belted', 'wrap'],
+    rectangle: ['layered', 'boxy', 'straight', 'minimal', 'tailored'],
+    'inverted-triangle': ['wide-leg', 'flared', 'v-neck', 'balance', 'soft'],
+    apple: ['empire', 'draped', 'flowy', 'wrap', 'soft'],
+  }
+  const styleKeywords = [
+    ...(bodyType ? styleKeywordMap[bodyType] ?? [bodyType] : []),
+    ...fabricKeywords,
+  ]
 
   useEffect(() => {
     if (!retailers.length) {
@@ -41,6 +52,8 @@ export default function FeedPage() {
     params.set('retailers', retailers.join(','))
     if (category !== 'all') params.set('category', category)
     if (search) params.set('search', search)
+    if (palette) params.set('palette', palette.allHexCodes.join(','))
+    if (styleKeywords.length) params.set('style', styleKeywords.join(','))
 
     setLoading(true)
     fetch(`/api/products?${params}`)

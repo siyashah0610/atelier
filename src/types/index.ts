@@ -85,4 +85,4 @@ export interface Board {
   type: 'inspiration' | 'outfit' | 'capsule'
 }
 
-export type Page = 'landing' | 'onboarding' | 'feed' | 'boards' | 'profile' | 'cart'
+export type Page = 'landing' | 'onboarding' | 'feed' | 'boards' | 'profile' | 'cart' | 'check'
