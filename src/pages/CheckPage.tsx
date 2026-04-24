@@ -8,6 +8,8 @@ type InputMode = 'photo' | 'link' | 'barcode'
 interface OptionResult {
   name: string
   hex: string
+  url: string | null
+  imageUrl: string | null
   matchScore: number
   verdict: 'perfect' | 'great' | 'good' | 'fair' | 'skip'
   colorReasoning: string
@@ -116,7 +118,7 @@ export default function CheckPage() {
 
   async function handleSavePin(option: OptionResult) {
     if (!result) return
-    const imgUrl = pinImageUrl()
+    const imgUrl = option.imageUrl || pinImageUrl()
 
     if (selectedBoardId === '__new__') {
       if (!newBoardName.trim()) return
@@ -298,13 +300,89 @@ export default function CheckPage() {
             {/* Best pick callout */}
             {best && (
               <div className="bg-stone-900 text-white rounded-2xl p-5 flex items-center gap-4">
-                <div className="w-10 h-10 rounded-full border-2 border-white/30 flex-shrink-0" style={{ backgroundColor: best.hex }} />
+                {best.url ? (
+                  <a href={best.url} target="_blank" rel="noopener noreferrer" className="flex-shrink-0 hover:opacity-80 transition-opacity">
+                    <div className="w-10 h-10 rounded-full border-2 border-white/30" style={{ backgroundColor: best.hex }} />
+                  </a>
+                ) : (
+                  <div className="w-10 h-10 rounded-full border-2 border-white/30 flex-shrink-0" style={{ backgroundColor: best.hex }} />
+                )}
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-semibold uppercase tracking-wider text-stone-400">Best pick for you</p>
-                  <p className="font-semibold text-lg truncate">{best.name}</p>
+                  <p className="font-semibold text-lg truncate">
+                    {best.url ? (
+                      <a href={best.url} target="_blank" rel="noopener noreferrer" className="hover:underline text-white">
+                        {best.name}
+                      </a>
+                    ) : best.name}
+                  </p>
                   <p className="text-xs text-stone-400 mt-0.5">{best.colorReasoning}</p>
+                  {best.url && (
+                    <a
+                      href={best.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 mt-2.5 px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white text-[11px] font-semibold rounded-lg transition-colors"
+                    >
+                      Shop {best.name}
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                    </a>
+                  )}
                 </div>
                 <span className="text-2xl font-bold text-emerald-400 flex-shrink-0">{best.matchScore}</span>
+              </div>
+            )}
+
+            {/* All available colors */}
+            {result.options.filter((opt) => opt.url).length > 0 && (
+              <div className="bg-white rounded-2xl border border-stone-100 shadow-sm p-5">
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-stone-600 mb-4">All Available Colors</h3>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                  {result.options.filter((opt) => opt.url).map((opt) => (
+                    <a
+                      key={opt.name}
+                      href={opt.url!}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="group flex flex-col items-center gap-2.5 p-3 rounded-xl border border-stone-100 hover:border-stone-300 hover:shadow-md hover:bg-stone-50 transition-all"
+                    >
+                      {/* Color preview with image or swatch */}
+                      <div className="relative w-full aspect-[3/4] rounded-lg overflow-hidden bg-stone-100">
+                        {opt.imageUrl ? (
+                          <img
+                            src={opt.imageUrl}
+                            alt={opt.name}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center">
+                            <div
+                              className="w-12 h-12 rounded-full border-4 border-white shadow-md"
+                              style={{ backgroundColor: opt.hex }}
+                            />
+                          </div>
+                        )}
+                        {/* Overlay on hover */}
+                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
+                      </div>
+
+                      {/* Color name and info */}
+                      <div className="w-full text-center">
+                        <p className="text-xs font-semibold text-stone-900 truncate group-hover:text-stone-700">
+                          {opt.name}
+                        </p>
+                        <p className="text-[10px] text-stone-400 mt-0.5">
+                          Match: {opt.matchScore}%
+                        </p>
+                      </div>
+
+                      {/* Shop button indicator */}
+                      <div className="w-full px-2.5 py-1.5 rounded-lg bg-stone-100 group-hover:bg-stone-900 group-hover:text-white transition-colors text-center">
+                        <p className="text-[10px] font-semibold">Shop</p>
+                      </div>
+                    </a>
+                  ))}
+                </div>
               </div>
             )}
 
@@ -317,13 +395,39 @@ export default function CheckPage() {
                 return (
                   <div key={opt.name} className="bg-white rounded-2xl border border-stone-100 shadow-sm p-4">
                     <div className="flex items-center gap-3">
-                      {/* Color swatch */}
-                      <div className="w-9 h-9 rounded-full border border-stone-100 shadow-sm flex-shrink-0" style={{ backgroundColor: opt.hex }} />
+                  {/* Image & Color swatch */}
+                  {opt.url ? (
+                    <a href={opt.url} target="_blank" rel="noopener noreferrer" className="relative flex-shrink-0 hover:opacity-80 transition-opacity block">
+                      {opt.imageUrl && (
+                        <img src={opt.imageUrl} alt={opt.name} className="w-10 h-12 object-cover rounded-md border border-stone-200 shadow-sm bg-stone-50" />
+                      )}
+                      <div 
+                        className={`rounded-full border shadow-sm ${opt.imageUrl ? 'w-4 h-4 absolute -bottom-1 -right-1.5 border-white border-2' : 'w-9 h-9 border-stone-100'}`} 
+                        style={{ backgroundColor: opt.hex }} 
+                      />
+                    </a>
+                  ) : (
+                    <div className="relative flex-shrink-0">
+                      {opt.imageUrl && (
+                        <img src={opt.imageUrl} alt={opt.name} className="w-10 h-12 object-cover rounded-md border border-stone-200 shadow-sm bg-stone-50" />
+                      )}
+                      <div 
+                        className={`rounded-full border shadow-sm ${opt.imageUrl ? 'w-4 h-4 absolute -bottom-1 -right-1.5 border-white border-2' : 'w-9 h-9 border-stone-100'}`} 
+                        style={{ backgroundColor: opt.hex }} 
+                      />
+                    </div>
+                  )}
 
                       {/* Name + score bar */}
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between gap-2 mb-1.5">
-                          <p className="text-sm font-semibold text-stone-900 truncate">{opt.name}</p>
+                          <p className="text-sm font-semibold text-stone-900 truncate">
+                            {opt.url ? (
+                              <a href={opt.url} target="_blank" rel="noopener noreferrer" className="hover:underline text-stone-900">
+                                {opt.name}
+                              </a>
+                            ) : opt.name}
+                          </p>
                           <div className="flex items-center gap-2 flex-shrink-0">
                             <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${v.pill}`}>{v.emoji} {v.label}</span>
                             <span className="text-xs font-bold text-stone-700 w-8 text-right">{opt.matchScore}</span>
@@ -338,6 +442,17 @@ export default function CheckPage() {
                       <p className="text-xs text-stone-600 leading-relaxed">{opt.colorReasoning}</p>
                       {opt.fitReasoning && (
                         <p className="text-xs text-stone-500 leading-relaxed italic">{opt.fitReasoning}</p>
+                      )}
+                      {opt.url && (
+                        <a
+                          href={opt.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 mt-2.5 px-3 py-1.5 bg-stone-100 hover:bg-stone-200 text-stone-800 text-[11px] font-semibold rounded-lg transition-colors"
+                        >
+                          Shop {opt.name}
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                        </a>
                       )}
                     </div>
 
