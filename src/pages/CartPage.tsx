@@ -1,9 +1,49 @@
 import React from 'react'
 import { useApp } from '../context/AppContext'
-import { CartItem } from '../types'
+import { CartItem, BodyProfile } from '../types'
+
+// Estimate clothing size from body measurements (US women's standard)
+function estimateSize(body?: BodyProfile | null): string | null {
+  if (!body) return null
+  const bust = parseFloat(body.bust ?? '')
+  const waist = parseFloat(body.waist ?? '')
+  const hips = parseFloat(body.hips ?? '')
+  const ref = !isNaN(bust) ? bust : !isNaN(hips) ? hips - 2 : !isNaN(waist) ? waist + 10 : NaN
+  if (isNaN(ref)) return null
+  if (ref <= 33) return 'XS'
+  if (ref <= 35) return 'S'
+  if (ref <= 37.5) return 'M'
+  if (ref <= 40) return 'L'
+  if (ref <= 42) return 'XL'
+  return 'XXL'
+}
+
+// For Shopify stores: if every item has ?variant=ID, build /cart/ID:qty,ID:qty
+function buildCheckoutUrl(items: CartItem[]): string {
+  try {
+    const origin = new URL(items[0].product.affiliateUrl).origin
+    const parts: string[] = []
+    for (const item of items) {
+      const u = new URL(item.product.affiliateUrl)
+      const variantId = u.searchParams.get('variant')
+      // Shopify variant IDs are long numeric strings
+      if (!variantId || !/^\d{8,}$/.test(variantId)) return items[0].product.affiliateUrl
+      parts.push(`${variantId}:${item.quantity}`)
+    }
+    // Verify all items share the same origin (same Shopify store)
+    const sameOrigin = items.every(i => {
+      try { return new URL(i.product.affiliateUrl).origin === origin } catch { return false }
+    })
+    if (!sameOrigin) return items[0].product.affiliateUrl
+    return `${origin}/cart/${parts.join(',')}`
+  } catch {
+    return items[0].product.affiliateUrl
+  }
+}
 
 export default function CartPage() {
-  const { cart, removeFromCart, setCurrentPage } = useApp()
+  const { cart, removeFromCart, setCurrentPage, userProfile } = useApp()
+  const estimatedSize = estimateSize(userProfile?.bodyProfile)
 
   const byRetailer = cart.reduce<Record<string, CartItem[]>>((acc, item) => {
     const r = item.product.retailer
@@ -43,13 +83,25 @@ export default function CartPage() {
           </p>
         </div>
 
+        {/* Estimated size banner */}
+        {estimatedSize && (
+          <div className="mb-6 bg-white rounded-2xl border border-stone-100 px-5 py-4 flex items-center gap-3">
+            <div className="w-9 h-9 rounded-full bg-stone-900 text-white flex items-center justify-center text-xs font-bold flex-shrink-0">
+              {estimatedSize}
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-stone-900">Your estimated size: {estimatedSize}</p>
+              <p className="text-xs text-stone-400 mt-0.5">Based on your measurements — sizes vary by brand, check each retailer's size guide.</p>
+            </div>
+          </div>
+        )}
+
         {/* Per-retailer groups */}
         <div className="space-y-6">
           {Object.entries(byRetailer).map(([retailer, items]) => {
-            const subtotal = items.reduce(
-              (sum, item) => sum + item.product.price * item.quantity,
-              0
-            )
+            const subtotal = items.reduce((sum, item) => sum + item.product.price * item.quantity, 0)
+            const checkoutUrl = buildCheckoutUrl(items)
+            const isShopifyCart = checkoutUrl.includes('/cart/') && !checkoutUrl.includes('/products/')
 
             return (
               <div key={retailer} className="bg-white rounded-2xl border border-stone-100 overflow-hidden">
@@ -75,9 +127,14 @@ export default function CartPage() {
                         <p className="text-sm text-stone-800 font-medium leading-tight line-clamp-1 mt-0.5">
                           {item.product.name}
                         </p>
-                        <div className="flex items-center gap-2 mt-1">
+                        <div className="flex items-center gap-2 mt-1.5">
+                          {estimatedSize && item.product.category === 'clothing' && (
+                            <span className="text-xs text-stone-600 bg-stone-100 px-2 py-0.5 rounded font-medium">
+                              Est. size {estimatedSize}
+                            </span>
+                          )}
                           {item.size && (
-                            <span className="text-xs text-stone-500 bg-stone-50 px-2 py-0.5 rounded">
+                            <span className="text-xs text-stone-500 bg-stone-50 px-2 py-0.5 rounded border border-stone-100">
                               {item.size}
                             </span>
                           )}
@@ -111,25 +168,23 @@ export default function CartPage() {
                 </div>
 
                 {/* Checkout button per retailer */}
-                <div className="px-5 py-4 bg-stone-50">
+                <div className="px-5 py-4 bg-stone-50 space-y-2">
                   <a
-                    href={items[0].product.affiliateUrl}
+                    href={checkoutUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex items-center justify-center gap-2 w-full py-3 bg-stone-900 text-white text-sm font-semibold rounded-xl hover:bg-stone-800 transition-colors"
                   >
-                    Checkout at {retailer}
+                    {isShopifyCart ? `Add All to ${retailer} Cart` : `Shop at ${retailer}`}
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
-                      />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                     </svg>
                   </a>
-                  <p className="text-[10px] text-stone-400 text-center mt-2">
-                    You'll complete checkout on {retailer}'s website
+                  <p className="text-[10px] text-stone-400 text-center">
+                    {isShopifyCart
+                      ? `Opens ${retailer}'s cart with your items pre-loaded`
+                      : `Opens the product page on ${retailer}'s website`}
+                    {estimatedSize ? ` · Your est. size: ${estimatedSize}` : ''}
                   </p>
                 </div>
               </div>
@@ -144,9 +199,7 @@ export default function CartPage() {
             {Object.entries(byRetailer).map(([retailer, items]) => (
               <div key={retailer} className="flex justify-between text-stone-600">
                 <span>{retailer}</span>
-                <span>
-                  ${items.reduce((s, i) => s + i.product.price * i.quantity, 0).toFixed(2)}
-                </span>
+                <span>${items.reduce((s, i) => s + i.product.price * i.quantity, 0).toFixed(2)}</span>
               </div>
             ))}
             <div className="border-t border-stone-100 pt-2 flex justify-between font-semibold text-stone-900">
@@ -155,8 +208,7 @@ export default function CartPage() {
             </div>
           </div>
           <p className="text-[11px] text-stone-400 mt-3 leading-relaxed">
-            Each retailer processes their order separately. Atelier earns a small affiliate commission
-            from partner retailers at no extra cost to you.
+            Each retailer processes their order separately. Atelier earns a small affiliate commission from partner retailers at no extra cost to you.
           </p>
         </div>
       </div>

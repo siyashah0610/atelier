@@ -85,4 +85,45 @@ export interface Board {
   type: 'inspiration' | 'outfit' | 'capsule'
 }
 
-export type Page = 'landing' | 'onboarding' | 'feed' | 'boards' | 'profile' | 'cart' | 'check'
+export type Page = 'landing' | 'onboarding' | 'feed' | 'boards' | 'profile' | 'cart' | 'check' | 'analyses'
+
+export interface SavedAnalysis {
+  id: string
+  savedAt: string
+  productName: string
+  productBrand: string
+  productCategory: string
+  productPrice: number | null
+  productImageUrl: string | null
+  productUrl: string | null
+  colorScore: number
+  colorVerdict: string
+  overallRecommendation: string
+  topColorPicks: Array<{
+    name: string
+    hex: string
+    matchScore: number
+    verdict: string
+    url: string | null
+    imageUrl: string | null
+    reasoning?: string
+  }>
+  storeName: string
+  fullAnalysis: {
+    bodyTypeScore: number | null
+    bodyTypeVerdict: string | null
+    colorReasoning: string
+    fitReasoning: string | null
+    suggestedStyling: string | null
+    allOptions: Array<{
+      name: string
+      hex: string
+      url: string | null
+      imageUrl: string | null
+      matchScore: number
+      verdict: string
+      colorReasoning: string
+      fitReasoning: string | null
+    }>
+  }
+}

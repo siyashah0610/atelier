@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react'
-import { UserProfile, Product, Board, CartItem, Page } from '../types'
+import { UserProfile, Product, Board, CartItem, Page, SavedAnalysis } from '../types'
 
 interface AppState {
   currentPage: Page
@@ -7,6 +7,7 @@ interface AppState {
   savedProducts: Product[]
   boards: Board[]
   cart: CartItem[]
+  analyses: SavedAnalysis[]
   selectedProduct: Product | null
   setCurrentPage: (page: Page) => void
   setUserProfile: (profile: UserProfile) => void
@@ -23,6 +24,8 @@ interface AppState {
   toggleBoardVisibility: (boardId: string) => void
   deleteBoard: (boardId: string) => void
   updateRetailers: (retailers: string[]) => void
+  saveAnalysis: (analysis: SavedAnalysis) => void
+  deleteAnalysis: (id: string) => void
 }
 
 const AppContext = createContext<AppState | null>(null)
@@ -57,12 +60,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   )
   const [boards, setBoards] = useState<Board[]>(() => load('atelier_boards', []))
   const [cart, setCart] = useState<CartItem[]>(() => load('atelier_cart', []))
+  const [analyses, setAnalyses] = useState<SavedAnalysis[]>(() => load('atelier_analyses', []))
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
 
   useEffect(() => { save('atelier_profile', userProfile) }, [userProfile])
   useEffect(() => { save('atelier_saved', savedProducts) }, [savedProducts])
   useEffect(() => { save('atelier_boards', boards) }, [boards])
   useEffect(() => { save('atelier_cart', cart) }, [cart])
+  useEffect(() => { save('atelier_analyses', analyses) }, [analyses])
 
   const setCurrentPage = (page: Page) => setCurrentPageState(page)
 
@@ -156,6 +161,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     })
   }, [])
 
+  const saveAnalysis = useCallback((analysis: SavedAnalysis) => {
+    setAnalyses((prev) => [analysis, ...prev])
+  }, [])
+
+  const deleteAnalysis = useCallback((id: string) => {
+    setAnalyses((prev) => prev.filter((a) => a.id !== id))
+  }, [])
+
   return (
     <AppContext.Provider
       value={{
@@ -164,6 +177,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         savedProducts,
         boards,
         cart,
+        analyses,
         selectedProduct,
         setCurrentPage,
         setUserProfile,
@@ -180,6 +194,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         toggleBoardVisibility,
         deleteBoard,
         updateRetailers,
+        saveAnalysis,
+        deleteAnalysis,
       }}
     >
       {children}
