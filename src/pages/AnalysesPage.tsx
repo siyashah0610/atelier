@@ -46,6 +46,14 @@ function FullAnalysisView({ analysis, onAddToCart, isCarted }: {
   const fa = analysis.fullAnalysis
   const cv = verdictData(analysis.colorVerdict)
 
+  if (!fa) {
+    return (
+      <div className="pt-4">
+        <p className="text-xs text-stone-400 text-center py-6">Full analysis data not available for this entry.</p>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-4 pt-4">
       {/* Score breakdown */}
@@ -239,9 +247,10 @@ function FullAnalysisView({ analysis, onAddToCart, isCarted }: {
   )
 }
 
-function AnalysisCard({ analysis, onDelete }: {
+function AnalysisCard({ analysis, onDelete, onToggleFavorite }: {
   analysis: SavedAnalysis
   onDelete: () => void
+  onToggleFavorite: () => void
 }) {
   const { cart, addToCart } = useApp()
   const [expanded, setExpanded] = useState(false)
@@ -298,9 +307,20 @@ function AnalysisCard({ analysis, onDelete }: {
                 {analysis.productCategory}{analysis.productPrice ? ` · $${analysis.productPrice.toFixed(2)}` : ''}
               </p>
             </div>
-            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${cv.pill}`}>
-              {cv.emoji} {cv.label}
-            </span>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <button
+                onClick={onToggleFavorite}
+                className="transition-colors"
+                title={analysis.isFavorited ? 'Remove from favorites' : 'Add to favorites'}
+              >
+                <svg className={`w-5 h-5 transition-colors ${analysis.isFavorited ? 'fill-rose-500 text-rose-500' : 'fill-none text-stone-300 hover:text-rose-400'}`} stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" />
+                </svg>
+              </button>
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${cv.pill}`}>
+                {cv.emoji} {cv.label}
+              </span>
+            </div>
           </div>
 
           {/* Score bar */}
@@ -380,49 +400,78 @@ function AnalysisCard({ analysis, onDelete }: {
 }
 
 export default function AnalysesPage() {
-  const { analyses, deleteAnalysis, setCurrentPage } = useApp()
+  const { analyses, deleteAnalysis, setCurrentPage, toggleFavoriteAnalysis } = useApp()
+  const [activeTab, setActiveTab] = useState<'history' | 'favorites'>('history')
 
-  if (analyses.length === 0) {
-    return (
-      <div className="min-h-screen bg-[#FAFAF7] flex items-center justify-center">
-        <div className="text-center px-6">
-          <div className="text-5xl mb-4">🔍</div>
-          <h1 className="font-serif text-2xl text-stone-900 mb-2">No saved analyses</h1>
-          <p className="text-sm text-stone-400 mb-8 max-w-xs mx-auto">
-            Check an item and click "Save Analysis to History" before leaving the page — results aren't stored automatically.
-          </p>
-          <button onClick={() => setCurrentPage('check')}
-            className="px-7 py-3.5 bg-stone-900 text-white text-sm font-semibold rounded-xl hover:bg-stone-800 transition-colors">
-            Check an Item
-          </button>
-        </div>
-      </div>
-    )
-  }
+  const favorites = analyses.filter((a) => a.isFavorited)
+  const listed = activeTab === 'history' ? analyses : favorites
+
+  const tabBtn = (tab: 'history' | 'favorites', label: string, count: number) => (
+    <button
+      onClick={() => setActiveTab(tab)}
+      className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-colors ${
+        activeTab === tab ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500 hover:text-stone-700'
+      }`}
+    >
+      {label} <span className="ml-1 opacity-60">({count})</span>
+    </button>
+  )
 
   return (
     <div className="min-h-screen bg-[#FAFAF7] py-10 px-4">
       <div className="max-w-2xl mx-auto space-y-6">
+
+        {/* Header */}
         <div className="flex items-center justify-between">
-          <div>
-            <h1 className="font-serif text-3xl text-stone-900">Analyses</h1>
-            <p className="text-sm text-stone-400 mt-1">{analyses.length} saved item{analyses.length !== 1 ? 's' : ''}</p>
-          </div>
+          <h1 className="font-serif text-3xl text-stone-900">Analyses</h1>
           <button onClick={() => setCurrentPage('check')}
             className="px-4 py-2 bg-stone-900 text-white text-xs font-semibold rounded-xl hover:bg-stone-800 transition-colors">
             + New Analysis
           </button>
         </div>
 
-        <div className="space-y-3">
-          {analyses.map((analysis) => (
-            <AnalysisCard
-              key={analysis.id}
-              analysis={analysis}
-              onDelete={() => deleteAnalysis(analysis.id)}
-            />
-          ))}
+        {/* Tabs */}
+        <div className="flex gap-1 bg-stone-100 rounded-xl p-1">
+          {tabBtn('history', 'History', analyses.length)}
+          {tabBtn('favorites', 'Favorites', favorites.length)}
         </div>
+
+        {/* Empty states */}
+        {listed.length === 0 && activeTab === 'history' && (
+          <div className="text-center py-16">
+            <p className="text-3xl mb-3">🔍</p>
+            <p className="font-serif text-xl text-stone-900 mb-1">No analyses yet</p>
+            <p className="text-sm text-stone-400 mb-6 max-w-xs mx-auto">Every item you check is automatically saved here.</p>
+            <button onClick={() => setCurrentPage('check')}
+              className="px-6 py-3 bg-stone-900 text-white text-sm font-semibold rounded-xl hover:bg-stone-800 transition-colors">
+              Check an Item
+            </button>
+          </div>
+        )}
+
+        {listed.length === 0 && activeTab === 'favorites' && (
+          <div className="text-center py-16">
+            <p className="text-3xl mb-3">🤍</p>
+            <p className="font-serif text-xl text-stone-900 mb-1">No favorites yet</p>
+            <p className="text-sm text-stone-400 max-w-xs mx-auto">
+              Tap the heart on any analysis in History to save it here.
+            </p>
+          </div>
+        )}
+
+        {/* Cards */}
+        {listed.length > 0 && (
+          <div className="space-y-3">
+            {listed.map((analysis) => (
+              <AnalysisCard
+                key={analysis.id}
+                analysis={analysis}
+                onDelete={() => deleteAnalysis(analysis.id)}
+                onToggleFavorite={() => toggleFavoriteAnalysis(analysis.id)}
+              />
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )

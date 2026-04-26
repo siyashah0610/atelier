@@ -109,7 +109,8 @@ export interface SavedAnalysis {
     reasoning?: string
   }>
   storeName: string
-  fullAnalysis: {
+  isFavorited?: boolean
+  fullAnalysis?: {
     bodyTypeScore: number | null
     bodyTypeVerdict: string | null
     colorReasoning: string

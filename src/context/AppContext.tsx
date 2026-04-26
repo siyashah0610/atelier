@@ -26,6 +26,7 @@ interface AppState {
   updateRetailers: (retailers: string[]) => void
   saveAnalysis: (analysis: SavedAnalysis) => void
   deleteAnalysis: (id: string) => void
+  toggleFavoriteAnalysis: (id: string) => void
 }
 
 const AppContext = createContext<AppState | null>(null)
@@ -169,6 +170,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setAnalyses((prev) => prev.filter((a) => a.id !== id))
   }, [])
 
+  const toggleFavoriteAnalysis = useCallback((id: string) => {
+    setAnalyses((prev) => prev.map((a) => a.id === id ? { ...a, isFavorited: !a.isFavorited } : a))
+  }, [])
+
   return (
     <AppContext.Provider
       value={{
@@ -196,6 +201,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         updateRetailers,
         saveAnalysis,
         deleteAnalysis,
+        toggleFavoriteAnalysis,
       }}
     >
       {children}

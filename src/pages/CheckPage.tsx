@@ -105,7 +105,7 @@ function extractStoreName(url: string | null | undefined): string {
 }
 
 export default function CheckPage() {
-  const { userProfile, boards, createBoard, addToBoard, addToCart, saveAnalysis } = useApp()
+  const { userProfile, boards, createBoard, addToBoard, addToCart, saveAnalysis, setCurrentPage } = useApp()
   const [mode, setMode] = useState<InputMode>('photo')
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [imagePayload, setImagePayload] = useState<{ data: string; mediaType: string } | null>(null)
@@ -122,7 +122,6 @@ export default function CheckPage() {
   const [newBoardName, setNewBoardName] = useState('')
   const [savedOptions, setSavedOptions] = useState<Set<string>>(new Set())
   const [cartedOptions, setCartedOptions] = useState<Set<string>>(new Set())
-  const [analysisSaved, setAnalysisSaved] = useState(false)
 
   const fileRef = useRef<HTMLInputElement>(null)
 
@@ -160,8 +159,40 @@ export default function CheckPage() {
       })
       const json = await res.json()
       if (!res.ok) { setError(json.error ?? 'Something went wrong.'); setErrorHint(json.hint ?? null); return }
-      setResult(json as AnalysisResult)
+      const r = json as AnalysisResult
+      setResult(r)
       setSelectedBoardId(boards[0]?.id ?? '')
+      const sourceUrl = mode === 'link' ? linkInput.trim() : r.productUrl
+      saveAnalysis({
+        id: `analysis-${Date.now()}`,
+        savedAt: new Date().toISOString(),
+        productName: r.productName,
+        productBrand: r.productBrand,
+        productCategory: r.productCategory,
+        productPrice: r.productPrice,
+        productImageUrl: r.productImageUrl,
+        productUrl: r.productUrl,
+        colorScore: r.colorScore,
+        colorVerdict: r.colorVerdict,
+        overallRecommendation: r.overallRecommendation,
+        topColorPicks: r.topColorPicks.slice(0, 3).map((p) => ({
+          name: p.name, hex: p.hex, matchScore: p.matchScore,
+          verdict: p.verdict, url: p.url, imageUrl: p.imageUrl, reasoning: p.reasoning,
+        })),
+        storeName: extractStoreName(sourceUrl),
+        fullAnalysis: {
+          bodyTypeScore: r.bodyTypeScore,
+          bodyTypeVerdict: r.bodyTypeVerdict,
+          colorReasoning: r.colorReasoning,
+          fitReasoning: r.fitReasoning,
+          suggestedStyling: r.suggestedStyling,
+          allOptions: r.allOptions.map((o) => ({
+            name: o.name, hex: o.hex, url: o.url, imageUrl: o.imageUrl,
+            matchScore: o.matchScore, verdict: o.verdict,
+            colorReasoning: o.colorReasoning, fitReasoning: o.fitReasoning,
+          })),
+        },
+      })
     } catch { setError('Network error. Make sure the server is running.')
     } finally { setLoading(false) }
   }
@@ -171,7 +202,7 @@ export default function CheckPage() {
     setPreviewUrl(null); setImagePayload(null)
     setLinkInput(''); setBarcodeInput('')
     setSavedOptions(new Set()); setSavingOption(null)
-    setCartedOptions(new Set()); setAnalysisSaved(false)
+    setCartedOptions(new Set())
     if (fileRef.current) fileRef.current.value = ''
   }
 
@@ -195,52 +226,6 @@ export default function CheckPage() {
     }
     addToCart(product)
     setCartedOptions((prev) => new Set([...prev, opt.name]))
-  }
-
-  function handleSaveAnalysis() {
-    if (!result || analysisSaved) return
-    const sourceUrl = mode === 'link' ? linkInput.trim() : result.productUrl
-    saveAnalysis({
-      id: `analysis-${Date.now()}`,
-      savedAt: new Date().toISOString(),
-      productName: result.productName,
-      productBrand: result.productBrand,
-      productCategory: result.productCategory,
-      productPrice: result.productPrice,
-      productImageUrl: result.productImageUrl,
-      productUrl: result.productUrl,
-      colorScore: result.colorScore,
-      colorVerdict: result.colorVerdict,
-      overallRecommendation: result.overallRecommendation,
-      topColorPicks: result.topColorPicks.slice(0, 3).map((p) => ({
-        name: p.name,
-        hex: p.hex,
-        matchScore: p.matchScore,
-        verdict: p.verdict,
-        url: p.url,
-        imageUrl: p.imageUrl,
-        reasoning: p.reasoning,
-      })),
-      storeName: extractStoreName(sourceUrl),
-      fullAnalysis: {
-        bodyTypeScore: result.bodyTypeScore,
-        bodyTypeVerdict: result.bodyTypeVerdict,
-        colorReasoning: result.colorReasoning,
-        fitReasoning: result.fitReasoning,
-        suggestedStyling: result.suggestedStyling,
-        allOptions: result.allOptions.map((o) => ({
-          name: o.name,
-          hex: o.hex,
-          url: o.url,
-          imageUrl: o.imageUrl,
-          matchScore: o.matchScore,
-          verdict: o.verdict,
-          colorReasoning: o.colorReasoning,
-          fitReasoning: o.fitReasoning,
-        })),
-      },
-    })
-    setAnalysisSaved(true)
   }
 
   function pinImageUrl(): string {
@@ -431,33 +416,13 @@ export default function CheckPage() {
                   )}
                 </div>
               </div>
-              <div className="px-5 py-4 border-t border-stone-100 bg-amber-50 space-y-2.5">
-                {!analysisSaved && (
-                  <p className="text-xs text-amber-700 font-medium flex items-center gap-1.5">
-                    <svg className="w-3.5 h-3.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd"/></svg>
-                    This analysis won't be stored unless you save it
-                  </p>
-                )}
-                <button
-                  onClick={handleSaveAnalysis}
-                  disabled={analysisSaved}
-                  className={`w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold transition-colors ${
-                    analysisSaved
-                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                      : 'bg-stone-900 text-white hover:bg-stone-800 shadow-sm'
-                  }`}
-                >
-                  {analysisSaved ? (
-                    <>
-                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M5 3a2 2 0 00-2 2v16l7-3 7 3V5a2 2 0 00-2-2H5z"/></svg>
-                      Saved to History
-                    </>
-                  ) : (
-                    <>
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"/></svg>
-                      Save Analysis to History
-                    </>
-                  )}
+              <div className="px-5 py-3 border-t border-stone-50 bg-stone-50 flex items-center justify-between">
+                <p className="text-xs text-stone-400 flex items-center gap-1.5">
+                  <svg className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/></svg>
+                  Saved to history
+                </p>
+                <button onClick={() => setCurrentPage('analyses')} className="text-xs font-semibold text-stone-600 hover:text-stone-900 transition-colors">
+                  My Analyses →
                 </button>
               </div>
             </div>
