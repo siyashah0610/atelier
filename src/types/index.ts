@@ -33,6 +33,11 @@ export interface BodyProfile {
   hips?: string
   inseam?: string
   bodyType?: 'pear' | 'hourglass' | 'rectangle' | 'inverted-triangle' | 'apple'
+  shirtSize?: string
+  braSize?: string
+  pantsSize?: string
+  waistRise?: 'high' | 'mid' | 'low'
+  shoeSize?: string
 }
 
 export interface UserProfile {
@@ -110,12 +115,14 @@ export interface SavedAnalysis {
   }>
   storeName: string
   isFavorited?: boolean
+  recommendedSize?: string | null
   fullAnalysis?: {
     bodyTypeScore: number | null
     bodyTypeVerdict: string | null
     colorReasoning: string
     fitReasoning: string | null
     suggestedStyling: string | null
+    sizeReasoning?: string | null
     allOptions: Array<{
       name: string
       hex: string

@@ -39,6 +39,8 @@ interface AnalysisResult {
   colorReasoning: string
   fitReasoning: string | null
   suggestedStyling: string | null
+  recommendedSize: string | null
+  sizeReasoning: string | null
   topColorPicks: TopColorPick[]
   allOptions: OptionResult[]
   overallRecommendation: string
@@ -54,6 +56,21 @@ const VERDICT = {
   skip:    { emoji: '✕', label: 'Skip',      pill: 'bg-red-500 text-white',     bar: '#EF4444' },
 }
 
+function estimateSize(body?: any): string | null {
+  if (!body) return null
+  const bust = parseFloat(body.bust ?? '')
+  const waist = parseFloat(body.waist ?? '')
+  const hips = parseFloat(body.hips ?? '')
+  const ref = !isNaN(bust) ? bust : !isNaN(hips) ? hips - 2 : !isNaN(waist) ? waist + 10 : NaN
+  if (isNaN(ref)) return null
+  if (ref <= 33) return 'XS'
+  if (ref <= 35) return 'S'
+  if (ref <= 37.5) return 'M'
+  if (ref <= 40) return 'L'
+  if (ref <= 42) return 'XL'
+  return 'XXL'
+}
+
 function ScoreBar({ score, color }: { score: number; color: string }) {
   return (
     <div className="h-1.5 bg-stone-100 rounded-full overflow-hidden flex-1">
@@ -65,7 +82,7 @@ function ScoreBar({ score, color }: { score: number; color: string }) {
 const STORE_NAMES: Record<string, string> = {
   aritzia: 'Aritzia', sephora: 'Sephora', nordstrom: 'Nordstrom', nordstromrack: 'Nordstrom Rack',
   zara: 'Zara', hm: 'H&M', uniqlo: 'Uniqlo', mango: 'Mango', everlane: 'Everlane',
-  reformation: 'Reformation', anthropologie: 'Anthropologie', freepeople: 'Free People',
+  thereformation: 'Reformation', anthropologie: 'Anthropologie', freepeople: 'Free People',
   urbanoutfitters: 'Urban Outfitters', abercrombie: 'Abercrombie & Fitch', hollister: 'Hollister',
   gap: 'Gap', bananarepublic: 'Banana Republic', jcrew: 'J.Crew', amazon: 'Amazon',
   target: 'Target', walmart: 'Walmart', macys: "Macy's", bloomingdales: "Bloomingdale's",
@@ -126,7 +143,23 @@ export default function CheckPage() {
   const fileRef = useRef<HTMLInputElement>(null)
 
   const palette = userProfile?.palette ?? null
-  const bodyType = userProfile?.bodyProfile?.bodyType ?? null
+  const bodyProfile = userProfile?.bodyProfile ?? null
+  const estimatedSize = estimateSize(bodyProfile)
+
+  const getShopUrl = (url: string | null) => {
+    if (!url) return undefined;
+    const sizeToApply = result?.recommendedSize || estimatedSize;
+    if (!sizeToApply) return url;
+    try {
+      const u = new URL(url);
+      if (!u.searchParams.has('size') && !u.searchParams.has('sz')) {
+        u.searchParams.set('size', sizeToApply);
+      }
+      return u.href;
+    } catch {
+      return url;
+    }
+  };
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -144,13 +177,13 @@ export default function CheckPage() {
       let body: Record<string, unknown>
       if (mode === 'photo') {
         if (!imagePayload) { setError('Upload a product photo first.'); setLoading(false); return }
-        body = { type: 'image', data: imagePayload.data, mediaType: imagePayload.mediaType, palette, bodyType }
+        body = { type: 'image', data: imagePayload.data, mediaType: imagePayload.mediaType, palette, bodyProfile }
       } else if (mode === 'link') {
         if (!linkInput.trim()) { setError('Paste a product URL or image URL first.'); setLoading(false); return }
-        body = { type: 'url', data: linkInput.trim(), palette, bodyType }
+        body = { type: 'url', data: linkInput.trim(), palette, bodyProfile }
       } else {
         if (!barcodeInput.trim()) { setError('Enter a barcode number first.'); setLoading(false); return }
-        body = { type: 'barcode', data: barcodeInput.trim(), palette, bodyType }
+        body = { type: 'barcode', data: barcodeInput.trim(), palette, bodyProfile }
       }
       const res = await fetch('/api/product-check', {
         method: 'POST',
@@ -180,12 +213,14 @@ export default function CheckPage() {
           verdict: p.verdict, url: p.url, imageUrl: p.imageUrl, reasoning: p.reasoning,
         })),
         storeName: extractStoreName(sourceUrl),
+        recommendedSize: r.recommendedSize ?? null,
         fullAnalysis: {
           bodyTypeScore: r.bodyTypeScore,
           bodyTypeVerdict: r.bodyTypeVerdict,
           colorReasoning: r.colorReasoning,
           fitReasoning: r.fitReasoning,
           suggestedStyling: r.suggestedStyling,
+          sizeReasoning: r.sizeReasoning ?? null,
           allOptions: r.allOptions.map((o) => ({
             name: o.name, hex: o.hex, url: o.url, imageUrl: o.imageUrl,
             matchScore: o.matchScore, verdict: o.verdict,
@@ -220,11 +255,11 @@ export default function CheckPage() {
       hexColors: [opt.hex],
       rating: 5,
       reviewCount: 0,
-      affiliateUrl: opt.url || sourceUrl || '#',
+      affiliateUrl: getShopUrl(opt.url) || sourceUrl || '#',
       tags: [opt.verdict, result.productCategory, 'analyzed'],
-      bodyTypeTags: bodyType ? [bodyType] : [],
+      bodyTypeTags: bodyProfile?.bodyType ? [bodyProfile.bodyType] : [],
     }
-    addToCart(product)
+    addToCart(product, result.recommendedSize || undefined)
     setCartedOptions((prev) => new Set([...prev, opt.name]))
   }
 
@@ -265,7 +300,7 @@ export default function CheckPage() {
       reviewCount: 0,
       affiliateUrl: mode === 'link' ? linkInput.trim() : '#',
       tags: [option.verdict, result.productCategory, 'analyzed'],
-      bodyTypeTags: bodyType ? [bodyType] : [],
+      bodyTypeTags: bodyProfile?.bodyType ? [bodyProfile.bodyType] : [],
     }
 
     addToBoard(targetBoardId, pin)
@@ -283,7 +318,7 @@ export default function CheckPage() {
           <h1 className="font-serif text-3xl text-stone-900">Will This Suit You?</h1>
           <p className="text-sm text-stone-500">
             {palette
-              ? `Analyzing against your ${palette.seasonalType} palette${bodyType ? ` · ${bodyType}` : ''}`
+              ? `Analyzing against your ${palette.seasonalType} palette${bodyProfile?.bodyType ? ` · ${bodyProfile.bodyType}` : ''}`
               : 'Complete your color profile for personalized results'}
           </p>
         </div>
@@ -462,6 +497,19 @@ export default function CheckPage() {
                   {result.fitReasoning && <p className="text-xs text-stone-500 leading-relaxed">{result.fitReasoning}</p>}
                 </div>
               )}
+
+              {/* Recommended size */}
+              {result.recommendedSize && (
+                <div className="space-y-1.5 pt-1 border-t border-stone-50">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-semibold text-stone-700">Recommended Size</span>
+                    <span className="text-[11px] font-bold px-3 py-0.5 rounded-full bg-stone-900 text-white tracking-wide">
+                      {result.recommendedSize}
+                    </span>
+                  </div>
+                  {result.sizeReasoning && <p className="text-xs text-stone-500 leading-relaxed">{result.sizeReasoning}</p>}
+                </div>
+              )}
             </div>
 
             {/* Stylist suggestions */}
@@ -483,7 +531,7 @@ export default function CheckPage() {
                       <div className="flex items-center gap-2 mt-2 flex-wrap">
                         {result.topColorPicks[0].url && (
                           <a
-                            href={result.topColorPicks[0].url}
+                            href={getShopUrl(result.topColorPicks[0].url)}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-stone-900 hover:bg-stone-700 text-white text-[11px] font-semibold rounded-lg transition-colors"
@@ -532,7 +580,7 @@ export default function CheckPage() {
                       )}
                       {pick.url ? (
                         <a
-                          href={pick.url}
+                          href={getShopUrl(pick.url)}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="group flex flex-col items-center gap-2 p-3 rounded-xl border border-stone-100 hover:border-stone-300 hover:shadow-md transition-all"
@@ -590,7 +638,7 @@ export default function CheckPage() {
                     <div className="flex items-center gap-3">
                       {/* Image & Color swatch */}
                       {opt.url ? (
-                        <a href={opt.url} target="_blank" rel="noopener noreferrer" className="relative flex-shrink-0 hover:opacity-80 transition-opacity block">
+                        <a href={getShopUrl(opt.url)} target="_blank" rel="noopener noreferrer" className="relative flex-shrink-0 hover:opacity-80 transition-opacity block">
                           {opt.imageUrl && (
                             <img src={opt.imageUrl} alt={opt.name} className="w-10 h-12 object-cover rounded-md border border-stone-200 shadow-sm bg-stone-50" />
                           )}
@@ -616,7 +664,7 @@ export default function CheckPage() {
                         <div className="flex items-center justify-between gap-2 mb-1.5">
                           <p className="text-sm font-semibold text-stone-900 truncate">
                             {opt.url ? (
-                              <a href={opt.url} target="_blank" rel="noopener noreferrer" className="hover:underline text-stone-900">
+                              <a href={getShopUrl(opt.url)} target="_blank" rel="noopener noreferrer" className="hover:underline text-stone-900">
                                 {opt.name}
                               </a>
                             ) : opt.name}
@@ -638,7 +686,7 @@ export default function CheckPage() {
                       )}
                       {opt.url && (
                         <a
-                          href={opt.url}
+                          href={getShopUrl(opt.url)}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="inline-flex items-center gap-1.5 mt-2.5 px-3 py-1.5 bg-stone-100 hover:bg-stone-200 text-stone-800 text-[11px] font-semibold rounded-lg transition-colors"

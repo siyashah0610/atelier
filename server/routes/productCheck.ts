@@ -72,18 +72,30 @@ async function remoteImageToBase64(url: string): Promise<{ data: string; mediaTy
 
 interface ColorOption { name: string; hex?: string; imageUrl?: string; url?: string }
 
+interface VariantAgentResult {
+  colorOptions: ColorOption[]
+  availableSizes: string[]
+  shopifyVariantMap: Record<string, Record<string, number>> | null  // colorName → sizeName → variantId
+  shopifyHandle: string | null
+  shopifyOrigin: string | null
+  fitDescription: string
+  pageImages: string[]
+}
+
 interface ScrapedProduct {
   name: string
   brand: string
   price?: number
   imageUrls: string[]
-  colorOptions: ColorOption[]   // structured variants extracted from page data
-  colorHints: string[]          // plain color name strings from text
+  colorOptions: ColorOption[]
+  colorHints: string[]
+  availableSizes: string[]
+  fitDescription: string
 }
 
 async function scrapeProduct(pageUrl: string): Promise<ScrapedProduct | null> {
   if (isDirectImageUrl(pageUrl)) {
-    return { name: '', brand: '', imageUrls: [pageUrl], colorOptions: [], colorHints: [] }
+    return { name: '', brand: '', imageUrls: [pageUrl], colorOptions: [], colorHints: [], availableSizes: [], fitDescription: '' }
   }
 
   let html = ''
@@ -99,7 +111,7 @@ async function scrapeProduct(pageUrl: string): Promise<ScrapedProduct | null> {
       redirect: 'follow',
     })
     const ct = res.headers.get('content-type') ?? ''
-    if (ct.startsWith('image/')) return { name: '', brand: '', imageUrls: [pageUrl], colorOptions: [], colorHints: [] }
+    if (ct.startsWith('image/')) return { name: '', brand: '', imageUrls: [pageUrl], colorOptions: [], colorHints: [], availableSizes: [], fitDescription: '' }
     if (res.ok && res.status !== 403 && res.status !== 401) {
       finalUrl = res.url ?? pageUrl
       html = await res.text()
@@ -113,6 +125,8 @@ async function scrapeProduct(pageUrl: string): Promise<ScrapedProduct | null> {
       const page = await browser.newPage()
       await page.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36')
       await page.goto(pageUrl, { waitUntil: 'domcontentloaded', timeout: 15_000 })
+      // Give SPA frameworks a moment to inject content
+      await new Promise(r => setTimeout(r, 2000))
       html = await page.content()
       await browser.close()
     } catch (err) {
@@ -124,9 +138,11 @@ async function scrapeProduct(pageUrl: string): Promise<ScrapedProduct | null> {
   const imageUrls = new Set<string>()
   const colorOptions: ColorOption[] = []
   const colorHints: string[] = []
+  const availableSizes: string[] = []
   let name = ''
   let brand = ''
   let price: number | undefined
+  let fitDescription = ''
 
   // ── 1. Next.js __NEXT_DATA__ (Sephora, many modern retail sites) ──────────
   const nextDataMatch = html.match(/<script id="__NEXT_DATA__" type="application\/json"[^>]*>([\s\S]*?)<\/script>/i)
@@ -192,6 +208,11 @@ async function scrapeProduct(pageUrl: string): Promise<ScrapedProduct | null> {
           if (b?.name) brand = b.name
         }
 
+        // Fit description from JSON-LD product description
+        if (!fitDescription && typeof node['description'] === 'string' && node['description'].length > 30) {
+          fitDescription = node['description'].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 1500)
+        }
+
         // Images
         const imgs = Array.isArray(node['image']) ? node['image'] as string[] : typeof node['image'] === 'string' ? [node['image']] : []
         for (const i of imgs) { const u = cleanUrl(i, finalUrl); if (u) imageUrls.add(u) }
@@ -219,6 +240,7 @@ async function scrapeProduct(pageUrl: string): Promise<ScrapedProduct | null> {
   const ogImg = extractMeta(html, [
     /<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i,
     /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i,
+    /<meta[^>]+property=["']twitter:image["'][^>]+content=["']([^"']+)["']/i,
   ])
   if (ogImg) { const u = cleanUrl(ogImg, finalUrl); if (u) imageUrls.add(u) }
 
@@ -230,8 +252,20 @@ async function scrapeProduct(pageUrl: string): Promise<ScrapedProduct | null> {
   }
 
   // ── 4. Data-src / zoom-image attributes (lazy-loaded product images) ──────
-  for (const m of html.matchAll(/data-(?:zoom-image|large-image|src|original|hi-res)=["'](https?[^"']+\.(?:jpe?g|png|webp)[^"']*)["']/gi)) {
-    const u = cleanUrl(m[1], finalUrl); if (u) imageUrls.add(u)
+  for (const m of html.matchAll(/data-(?:zoom-image|large-image|src|original|hi-res|image)=["']([^"']+)["']/gi)) {
+    const raw = m[1]
+    if (IMAGE_EXT_RE.test(raw) || raw.includes('/is/image/') || raw.includes('/image/upload/')) {
+      const u = cleanUrl(raw, finalUrl); if (u) imageUrls.add(u)
+    }
+  }
+
+  // ── 4.5. Standard IMG tags (for CDNs without extensions like Anthropologie) ──────
+  for (const m of html.matchAll(/<img[^>]+src=["']([^"']+)["']/gi)) {
+    const raw = m[1]
+    if (/swatch|icon|logo|spinner|placeholder/i.test(raw)) continue
+    if (IMAGE_EXT_RE.test(raw) || raw.includes('/is/image/') || raw.includes('/image/upload/')) {
+      const u = cleanUrl(raw, finalUrl); if (u) imageUrls.add(u)
+    }
   }
 
   // ── 5. Sephora-specific: shade swatch JSON inside inline script ───────────
@@ -256,11 +290,22 @@ async function scrapeProduct(pageUrl: string): Promise<ScrapedProduct | null> {
     .replace(/<style[\s\S]*?<\/style>/gi, '')
     .replace(/<[^>]+>/g, ' ')
     .replace(/\s+/g, ' ')
-    .slice(0, 10_000)
+    .slice(0, 25_000)
 
   for (const m of text.matchAll(/(?:colou?r|shade|hue|tone)[:\s]+([a-z][a-z\s\-]{2,28}?)(?:[,.\n(]|$)/gi)) {
     const hint = m[1].trim()
     if (hint.length < 30 && !/^(the|this|that|and|for|with|your|our)$/i.test(hint)) colorHints.push(hint)
+  }
+
+  // ── Fit / size description from page text (supplements JSON-LD description) ──
+  if (!fitDescription) {
+    const fitSnippets: string[] = []
+    for (const m of text.matchAll(/(?:model\s+(?:is\s+)?wearing|runs?\s+(?:true\s+to\s+size|small|large)|fits?\s+(?:true|slim|relaxed|oversized|like)|size\s+(?:up|down)|recommend\s+sizing|size\s+guide|fit\s+details?|size\s+&\s+fit|measurements)[^.]{5,300}(?:\.|$)/gi)) {
+      const s = m[0].trim()
+      if (s.length > 20 && !fitSnippets.includes(s)) fitSnippets.push(s)
+      if (fitSnippets.length >= 6) break
+    }
+    if (fitSnippets.length) fitDescription = fitSnippets.join(' ').slice(0, 1500)
   }
 
   // ── 7. Common aria-label / title attributes for color swatches ───────────
@@ -397,6 +442,8 @@ async function scrapeProduct(pageUrl: string): Promise<ScrapedProduct | null> {
     imageUrls: allImages,
     colorOptions: colorOptions.slice(0, 24),
     colorHints: [...new Set(colorHints)].slice(0, 10),
+    availableSizes: [...new Set(availableSizes)],
+    fitDescription: fitDescription.slice(0, 1500),
   }
 }
 
@@ -421,7 +468,7 @@ const SWATCH_SEL = [
 ].join(', ')
 
 
-async function clickThroughColorVariants(pageUrl: string): Promise<ColorOption[]> {
+async function clickThroughColorVariants(pageUrl: string): Promise<VariantAgentResult> {
   let browser
   try {
     browser = await puppeteer.launch({ headless: true })
@@ -436,6 +483,10 @@ async function clickThroughColorVariants(pageUrl: string): Promise<ColorOption[]
 
     const variants: ColorOption[] = []
     const seen = new Set<string>()
+    const shopifyVariantMap: Record<string, Record<string, number>> = {}
+    const availableSizes: string[] = []
+    let fitDescription = ''
+    let shopifyHandleFound: string | null = null
 
     function addVariant(name: string, url: string | null | undefined, hex: string | null | undefined) {
       const key = name.toLowerCase()
@@ -458,6 +509,7 @@ async function clickThroughColorVariants(pageUrl: string): Promise<ColorOption[]
     // every variant ID + option values, letting us construct direct variant URLs.
     const shopifyHandle = finalUrl.match(/\/products\/([^/?#]+)/)?.[1]
     if (shopifyHandle) {
+      shopifyHandleFound = shopifyHandle
       const shopifyJson = await page.evaluate(async (handle: string): Promise<Record<string, unknown> | null> => {
         try {
           const res = await fetch(`/products/${handle}.json`, { headers: { 'Accept': 'application/json' } })
@@ -470,11 +522,34 @@ async function clickThroughColorVariants(pageUrl: string): Promise<ColorOption[]
       if (product && Array.isArray(product['variants'])) {
         const options = (product['options'] as Array<Record<string, unknown>> | undefined) || []
         const colorIdx = options.findIndex(o => /^colou?r$/i.test(String(o['name'] || '')))
+        const sizeIdx  = options.findIndex(o => /^size$/i.test(String(o['name'] || '')))
         const colorKey = colorIdx >= 0 ? `option${colorIdx + 1}` : 'option1'
+        const sizeKey  = sizeIdx  >= 0 ? `option${sizeIdx  + 1}` : null
+
+        // Collect ordered size values from the size option definition
+        if (sizeIdx >= 0) {
+          const sizeVals = (options[sizeIdx]['values'] as string[] | undefined) ?? []
+          for (const s of sizeVals) { if (s && !availableSizes.includes(s)) availableSizes.push(s) }
+        }
+
+        // Extract fit description from product body HTML
+        const bodyHtml = (product['body_html'] as string) ?? ''
+        if (bodyHtml && !fitDescription) {
+          fitDescription = bodyHtml.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 700)
+        }
+
         for (const v of product['variants'] as Record<string, unknown>[]) {
           const colorName = String(v[colorKey] || '').trim()
           if (!colorName) continue
           addVariant(colorName, `${baseOrigin}/products/${shopifyHandle}?variant=${v['id']}`, null)
+          // Build color → size → variantId map for size pre-selection
+          if (sizeKey) {
+            const sizeName = String(v[sizeKey] || '').trim()
+            if (sizeName) {
+              if (!shopifyVariantMap[colorName]) shopifyVariantMap[colorName] = {}
+              shopifyVariantMap[colorName][sizeName] = v['id'] as number
+            }
+          }
         }
       }
     }
@@ -627,12 +702,40 @@ async function clickThroughColorVariants(pageUrl: string): Promise<ColorOption[]
       } catch { /* skip broken swatch */ }
     }
 
+    // Extract product images from the live DOM (captures lazy-loaded images static scraping misses)
+    const pageImages: string[] = await page.evaluate((): string[] => {
+      const seen = new Set<string>()
+      const results: string[] = []
+      const add = (url: string) => {
+        if (!seen.has(url) && url.startsWith('http') && !/swatch|icon|logo|spinner|placeholder|pixel/i.test(url)) {
+          seen.add(url); results.push(url)
+        }
+      }
+      const og = document.querySelector('meta[property="og:image"]')?.getAttribute('content')
+      if (og) add(og)
+      for (const img of Array.from(document.images)) {
+        const src = img.currentSrc || img.src || img.getAttribute('data-src') || ''
+        if (src && (src.includes('/is/image/') || src.includes('/image/upload/') || /\.(jpe?g|png|webp)/i.test(src.split('?')[0]))) {
+          add(src)
+        }
+      }
+      return results.slice(0, 5)
+    }).catch(() => [])
+
     await browser.close()
-    return variants.filter(v => v.name && v.name.length > 1).slice(0, 24)
+    return {
+      colorOptions: variants.filter(v => v.name && v.name.length > 1).slice(0, 24),
+      availableSizes,
+      shopifyVariantMap: Object.keys(shopifyVariantMap).length > 0 ? shopifyVariantMap : null,
+      shopifyHandle: shopifyHandleFound,
+      shopifyOrigin: shopifyHandleFound ? baseOrigin : null,
+      fitDescription,
+      pageImages,
+    }
   } catch (err) {
     console.error('[click-through-variants]', err)
     try { await browser?.close() } catch { /* ignore */ }
-    return []
+    return { colorOptions: [], availableSizes: [], shopifyVariantMap: null, shopifyHandle: null, shopifyOrigin: null, fitDescription: '', pageImages: [] }
   }
 }
 
@@ -653,10 +756,12 @@ async function lookupBarcode(barcode: string): Promise<{ name: string; imageUrl?
 
 // ─── Claude prompt ────────────────────────────────────────────────────────────
 
+type BodyProfileArg = { bodyType?: string; height?: string; bust?: string; waist?: string; hips?: string; shirtSize?: string; braSize?: string; pantsSize?: string; waistRise?: string; shoeSize?: string } | undefined | null
+
 function buildPrompt(
   palette: ColorPalette | undefined | null,
-  bodyType: string | undefined | null,
-  product: { name: string; brand: string; colorOptions: ColorOption[]; colorHints: string[] },
+  bodyProfile: BodyProfileArg,
+  product: { name: string; brand: string; colorOptions: ColorOption[]; colorHints: string[]; availableSizes?: string[]; fitDescription?: string },
 ): string {
   const paletteSection = palette
     ? `USER COLOR PROFILE:
@@ -668,9 +773,24 @@ Colors to Avoid (hex): ${palette.toAvoid.slice(0, 6).join(', ')}
 Full Flattering Palette (hex): ${palette.allHexCodes.slice(0, 28).join(', ')}`
     : 'USER COLOR PROFILE: No palette on file — do your best with the visible colors.'
 
-  const bodySection = bodyType
-    ? `USER BODY TYPE: ${bodyType}`
-    : 'USER BODY TYPE: Not provided.'
+  const bodyLines: string[] = []
+  if (bodyProfile) {
+    if (bodyProfile.bodyType) bodyLines.push(`Body type: ${bodyProfile.bodyType}`)
+    const meas: string[] = []
+    if (bodyProfile.height) meas.push(`Height ${bodyProfile.height}`)
+    if (bodyProfile.bust)   meas.push(`Bust ${bodyProfile.bust}"`)
+    if (bodyProfile.waist)  meas.push(`Waist ${bodyProfile.waist}"`)
+    if (bodyProfile.hips)   meas.push(`Hips ${bodyProfile.hips}"`)
+    if (meas.length) bodyLines.push(`Measurements: ${meas.join(', ')}`)
+    if (bodyProfile.shirtSize) bodyLines.push(`Stated shirt/top size: ${bodyProfile.shirtSize}`)
+    if (bodyProfile.braSize)   bodyLines.push(`Bra size: ${bodyProfile.braSize}`)
+    if (bodyProfile.pantsSize) bodyLines.push(`Stated pants/jeans size: ${bodyProfile.pantsSize}`)
+    if (bodyProfile.waistRise) bodyLines.push(`Rise preference: ${bodyProfile.waistRise}-waisted`)
+    if (bodyProfile.shoeSize)  bodyLines.push(`Shoe size (US): ${bodyProfile.shoeSize}`)
+  }
+  const bodySection = bodyLines.length > 0
+    ? `USER BODY & SIZING PROFILE:\n${bodyLines.join('\n')}`
+    : 'USER BODY & SIZING PROFILE: Not provided.'
 
   const knownOptions = product.colorOptions.length
     ? `KNOWN COLOR OPTIONS (from page data):\n${product.colorOptions.map((o) => `- ${o.name}${o.hex ? ` (${o.hex})` : ''}${o.imageUrl ? ` (Image: ${o.imageUrl})` : ''}${o.url ? ` (Link: ${o.url})` : ''}`).join('\n')}`
@@ -678,6 +798,12 @@ Full Flattering Palette (hex): ${palette.allHexCodes.slice(0, 28).join(', ')}`
 
   const hints = product.colorHints.length
     ? `COLOR HINTS FROM PAGE TEXT: ${product.colorHints.join(', ')}`
+    : ''
+
+  const sizingSection = (product.availableSizes?.length || product.fitDescription)
+    ? `PRODUCT SIZING INFO:
+${product.availableSizes?.length ? `Available sizes: ${product.availableSizes.join(', ')}` : ''}
+${product.fitDescription ? `Fit notes: "${product.fitDescription}"` : ''}`.trim()
     : ''
 
   return `You are an expert personal stylist specializing in seasonal color theory and body-type dressing.
@@ -691,15 +817,17 @@ ${product.name ? `Name: ${product.name}` : ''}
 ${product.brand ? `Brand: ${product.brand}` : ''}
 ${knownOptions}
 ${hints}
+${sizingSection ? '\n' + sizingSection : ''}
 
 TASK:
 1. Identify the product (name, brand, category: clothing | makeup | jewelry | shoes | bags).
 2. Analyze the CURRENTLY SHOWN color in the provided image(s).
    - colorScore (0-100): how well the currently shown color matches the user's palette.
    - bodyTypeScore (0-100): how well the silhouette/cut suits their body type. Set to null for non-clothing.
-3. suggestedStyling: 1-2 sentences of specific, actionable styling advice for this item given their body type (e.g., tuck, belt, layer, hem length). Set to null if body type is not provided.
+3. suggestedStyling: 1-2 sentences of specific, actionable styling advice for this item given their body type. Set to null if body type is not provided.
+4. recommendedSize: Cross-reference the user's stated sizes and measurements with the product's available sizes and fit notes. Apply fit adjustments (e.g. "runs large" → size down). Return the EXACT size string from "Available sizes" that best fits, or null if insufficient data. For shoes use shoe size; for tops use shirt size; for bottoms use pants size.
 5. Evaluate EVERY color listed in KNOWN COLOR OPTIONS against the user's palette. Put them all in allOptions, sorted highest to lowest matchScore. Only include real scraped options — do NOT invent colors.
-6. topColorPicks: choose exactly 3 entries from KNOWN COLOR OPTIONS (REAL product variants only — never invent a color). Each pick must come from a CLEARLY DIFFERENT hue family (e.g., one green, one blue, one blush — NOT three shades of brown). Pick the best representative from each distinct hue group. ONLY include picks that have a Link (url) in KNOWN COLOR OPTIONS — if fewer than 3 have links, return only those that do. Copy the exact url and imageUrl from KNOWN COLOR OPTIONS for each pick.
+6. topColorPicks: choose exactly 3 entries from KNOWN COLOR OPTIONS (REAL product variants only — never invent a color). Each pick must come from a CLEARLY DIFFERENT hue family. ONLY include picks that have a Link (url) in KNOWN COLOR OPTIONS — if fewer than 3 have links, return only those that do. Copy the exact url and imageUrl from KNOWN COLOR OPTIONS for each pick.
 
 Return ONLY valid JSON (no markdown, no extra text):
 {
@@ -713,6 +841,8 @@ Return ONLY valid JSON (no markdown, no extra text):
   "colorReasoning": "<1-2 sentences about the currently shown color vs the user's palette>",
   "fitReasoning": "<1-2 sentences about the silhouette/cut for clothing, or null>",
   "suggestedStyling": "<1-2 sentences of specific styling advice, or null>",
+  "recommendedSize": "<exact size string from Available sizes, or null>",
+  "sizeReasoning": "<1 sentence explaining the size choice, or null>",
   "topColorPicks": [
     {
       "name": "<color name — must be from allOptions>",
@@ -755,12 +885,12 @@ type ImageBlock = {
 }
 
 router.post('/', async (req: Request, res: Response) => {
-  const { type, data, mediaType, palette, bodyType } = req.body as {
+  const { type, data, mediaType, palette, bodyProfile } = req.body as {
     type: 'image' | 'url' | 'barcode'
     data: string
     mediaType?: string
     palette?: ColorPalette
-    bodyType?: string
+    bodyProfile?: { bodyType?: string; height?: string; bust?: string; waist?: string; hips?: string; shirtSize?: string; braSize?: string; pantsSize?: string; waistRise?: string; shoeSize?: string }
   }
 
   if (!type || !data) { res.status(400).json({ error: 'type and data are required' }); return }
@@ -769,10 +899,11 @@ router.post('/', async (req: Request, res: Response) => {
   if (!apiKey) { res.status(503).json({ error: 'API key not configured on server' }); return }
 
   const imageBlocks: ImageBlock[] = []
-  let productMeta: { name: string; brand: string; price?: number; colorOptions: ColorOption[]; colorHints: string[] } = {
-    name: '', brand: '', colorOptions: [], colorHints: [],
+  let productMeta: { name: string; brand: string; price?: number; colorOptions: ColorOption[]; colorHints: string[]; availableSizes: string[]; fitDescription: string } = {
+    name: '', brand: '', colorOptions: [], colorHints: [], availableSizes: [], fitDescription: '',
   }
-  let productImageUrl: string | null = null  // stable URL to use for pin thumbnail
+  let productImageUrl: string | null = null
+  let variantAgent: VariantAgentResult | null = null
 
   // ── Build image blocks by input type ────────────────────────────────────
   if (type === 'image') {
@@ -781,33 +912,69 @@ router.post('/', async (req: Request, res: Response) => {
 
   } else if (type === 'url') {
     // Run static scrape and Puppeteer color-URL discovery concurrently
-    const [scraped, puppeteerColors] = await Promise.all([
+    const emptyAgent: VariantAgentResult = { colorOptions: [], availableSizes: [], shopifyVariantMap: null, shopifyHandle: null, shopifyOrigin: null, fitDescription: '', pageImages: [] }
+    const [scraped, pr] = await Promise.all([
       scrapeProduct(data),
-      // Cap at 25s — click-through is thorough but bounded
       Promise.race([
         clickThroughColorVariants(data),
-        new Promise<ColorOption[]>(resolve => setTimeout(() => resolve([]), 25_000)),
+        new Promise<VariantAgentResult>(resolve => setTimeout(() => resolve(emptyAgent), 25_000)),
       ]),
     ])
+    variantAgent = pr
 
+    // If static scraper got no images, try to salvage images from Puppeteer color variants
     if (!scraped || scraped.imageUrls.length === 0) {
-      res.status(422).json({
-        error: "Couldn't load a product image from that URL.",
-        hint: "Most big retailers block automated image loading. Try right-clicking the product photo → 'Copy image address' → paste that direct image URL here instead.",
-      })
-      return
-    }
-
+      const puppeteerImgs = [
+        ...pr.pageImages,
+        ...pr.colorOptions.map(c => c.imageUrl).filter((u): u is string => !!u),
+      ].filter((u, i, a) => u && a.indexOf(u) === i)
+      if (puppeteerImgs.length === 0) {
+        res.status(422).json({
+          error: "Couldn't load a product image from that URL.",
+          hint: "Most big retailers block automated image loading. Try right-clicking the product photo → 'Copy image address' → paste that direct image URL here instead.",
+        })
+        return
+      }
+      // Patch the scraped result with Puppeteer-found images so the rest of the flow works
+      if (!scraped) {
+        // Complete miss — build a minimal scraped object from Puppeteer data
+        productMeta = {
+          name: '', brand: '', colorOptions: pr.colorOptions, colorHints: [],
+          availableSizes: pr.availableSizes, fitDescription: pr.fitDescription,
+        }
+      } else {
+        scraped.imageUrls = puppeteerImgs
+      }
+      if (scraped) {
+        productMeta = {
+          name: scraped.name, brand: scraped.brand, price: scraped.price,
+          colorOptions: scraped.colorOptions, colorHints: scraped.colorHints,
+          availableSizes: pr.availableSizes.length > 0 ? pr.availableSizes : scraped.availableSizes,
+          fitDescription: pr.fitDescription || scraped.fitDescription,
+        }
+      }
+      productImageUrl = puppeteerImgs[0]
+      const fetched = await Promise.all(puppeteerImgs.slice(0, 2).map(remoteImageToBase64))
+      for (const f of fetched) {
+        if (f) imageBlocks.push({ type: 'image', source: { type: 'base64', media_type: f.mediaType, data: f.data } })
+      }
+      if (imageBlocks.length === 0) {
+        res.status(422).json({
+          error: "Found the page but couldn't fetch any images.",
+          hint: "Right-click the product photo → 'Copy image address' → paste that URL here instead.",
+        })
+        return
+      }
+    } else {
     // Merge Puppeteer-discovered color data into the static scrape results.
-    // Puppeteer wins for URLs (JS-rendered hrefs) and hex (getComputedStyle).
-    for (const pc of puppeteerColors) {
+    for (const pc of pr.colorOptions) {
       const existing = scraped.colorOptions.find((o: ColorOption) => {
         const a = o.name.toLowerCase().replace(/\s+/g, ' ').trim()
         const b = pc.name.toLowerCase().replace(/\s+/g, ' ').trim()
         return a === b || a.includes(b) || b.includes(a)
       })
       if (existing) {
-        if (pc.url) existing.url = pc.url        // always prefer Puppeteer URL
+        if (pc.url) existing.url = pc.url
         if (pc.hex && !existing.hex) existing.hex = pc.hex
         if (pc.imageUrl && !existing.imageUrl) existing.imageUrl = pc.imageUrl
       } else {
@@ -815,7 +982,12 @@ router.post('/', async (req: Request, res: Response) => {
       }
     }
 
-    productMeta = { name: scraped.name, brand: scraped.brand, price: scraped.price, colorOptions: scraped.colorOptions, colorHints: scraped.colorHints }
+    productMeta = {
+      name: scraped.name, brand: scraped.brand, price: scraped.price,
+      colorOptions: scraped.colorOptions, colorHints: scraped.colorHints,
+      availableSizes: pr.availableSizes.length > 0 ? pr.availableSizes : scraped.availableSizes,
+      fitDescription: pr.fitDescription || scraped.fitDescription,
+    }
     productImageUrl = scraped.imageUrls[0]
 
     const fetched = await Promise.all(scraped.imageUrls.slice(0, 2).map(remoteImageToBase64))
@@ -828,6 +1000,7 @@ router.post('/', async (req: Request, res: Response) => {
         hint: "Right-click the product photo → 'Copy image address' → paste that URL here instead.",
       })
       return
+    }
     }
 
   } else if (type === 'barcode') {
@@ -855,10 +1028,10 @@ router.post('/', async (req: Request, res: Response) => {
   try {
     const message = await client.messages.create({
       model: 'claude-opus-4-7',
-      max_tokens: 3000,
+      max_tokens: 3200,
       messages: [{
         role: 'user',
-        content: [...imageBlocks, { type: 'text', text: buildPrompt(palette, bodyType, productMeta) }],
+        content: [...imageBlocks, { type: 'text', text: buildPrompt(palette, bodyProfile, productMeta) }],
       }],
     })
 
@@ -912,8 +1085,36 @@ router.post('/', async (req: Request, res: Response) => {
     }
     if (Array.isArray(result.topColorPicks)) {
       for (const pick of result.topColorPicks) matchUrlsFromScrape(pick)
-      // Sort so the highest match score is always index 0 (badge target)
       result.topColorPicks.sort((a: { matchScore: number }, b: { matchScore: number }) => b.matchScore - a.matchScore)
+    }
+
+    // For Shopify stores: update Shop URLs to pre-select the recommended color+size variant
+    if (result.recommendedSize && variantAgent?.shopifyVariantMap && variantAgent.shopifyHandle && variantAgent.shopifyOrigin) {
+      const vmap = variantAgent.shopifyVariantMap
+      const applySize = (opt: { name: string; url?: string | null }) => {
+        const sizeMap = vmap[opt.name] ?? Object.entries(vmap).find(([k]) => k.toLowerCase() === opt.name.toLowerCase())?.[1]
+        if (!sizeMap) return
+        const sz = result.recommendedSize as string
+        const variantId = sizeMap[sz] ?? Object.entries(sizeMap).find(([k]) => k.toLowerCase() === sz.toLowerCase())?.[1]
+        if (variantId) opt.url = `${variantAgent!.shopifyOrigin}/products/${variantAgent!.shopifyHandle}?variant=${variantId}`
+      }
+      if (Array.isArray(result.allOptions)) result.allOptions.forEach(applySize)
+      if (Array.isArray(result.topColorPicks)) result.topColorPicks.forEach(applySize)
+    } else if (result.recommendedSize) {
+      // For non-Shopify stores, dynamically append the size parameter to shop links
+      const applySizeGeneric = (opt: { url?: string | null }) => {
+        if (opt.url) {
+          try {
+            const u = new URL(opt.url)
+            if (!u.searchParams.has('size') && !u.searchParams.has('sizeId') && !u.searchParams.has('sz')) {
+              u.searchParams.set('size', result.recommendedSize as string)
+              opt.url = u.href
+            }
+          } catch {}
+        }
+      }
+      if (Array.isArray(result.allOptions)) result.allOptions.forEach(applySizeGeneric)
+      if (Array.isArray(result.topColorPicks)) result.topColorPicks.forEach(applySizeGeneric)
     }
 
     res.json({ ...result, productImageUrl, productUrl, productPrice: productMeta.price ?? null })

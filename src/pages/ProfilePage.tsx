@@ -146,6 +146,52 @@ export default function ProfilePage() {
                     </div>
                   </div>
                 )}
+
+                {(userProfile.bodyProfile.shirtSize || userProfile.bodyProfile.braSize ||
+                  userProfile.bodyProfile.pantsSize || userProfile.bodyProfile.waistRise ||
+                  userProfile.bodyProfile.shoeSize) && (
+                  <div className="pt-4 border-t border-stone-100">
+                    <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest mb-3">
+                      Sizing
+                    </p>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                      {userProfile.bodyProfile.shirtSize && (
+                        <div className="bg-stone-50 rounded-xl p-3">
+                          <p className="text-xs text-stone-400 uppercase tracking-widest font-medium">Shirts / Tops</p>
+                          <p className="font-semibold text-stone-800 mt-1">{userProfile.bodyProfile.shirtSize}</p>
+                        </div>
+                      )}
+                      {userProfile.bodyProfile.braSize && (
+                        <div className="bg-stone-50 rounded-xl p-3">
+                          <p className="text-xs text-stone-400 uppercase tracking-widest font-medium">Bra Size</p>
+                          <p className="font-semibold text-stone-800 mt-1">{userProfile.bodyProfile.braSize}</p>
+                        </div>
+                      )}
+                      {userProfile.bodyProfile.pantsSize && (
+                        <div className="bg-stone-50 rounded-xl p-3">
+                          <p className="text-xs text-stone-400 uppercase tracking-widest font-medium">Pants / Jeans</p>
+                          <p className="font-semibold text-stone-800 mt-1">{userProfile.bodyProfile.pantsSize}</p>
+                        </div>
+                      )}
+                      {userProfile.bodyProfile.waistRise && (
+                        <div className="bg-stone-50 rounded-xl p-3">
+                          <p className="text-xs text-stone-400 uppercase tracking-widest font-medium">Rise Preference</p>
+                          <p className="font-semibold text-stone-800 mt-1">
+                            {userProfile.bodyProfile.waistRise === 'high' ? 'High-waisted'
+                              : userProfile.bodyProfile.waistRise === 'mid' ? 'Mid-rise'
+                              : 'Low-rise'}
+                          </p>
+                        </div>
+                      )}
+                      {userProfile.bodyProfile.shoeSize && (
+                        <div className="bg-stone-50 rounded-xl p-3">
+                          <p className="text-xs text-stone-400 uppercase tracking-widest font-medium">Shoes (US)</p>
+                          <p className="font-semibold text-stone-800 mt-1">{userProfile.bodyProfile.shoeSize}</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 

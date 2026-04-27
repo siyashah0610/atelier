@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useApp } from '../context/AppContext'
 import { SavedAnalysis, Product } from '../types'
 
@@ -253,8 +253,19 @@ function AnalysisCard({ analysis, onDelete, onToggleFavorite }: {
   onToggleFavorite: () => void
 }) {
   const { cart, addToCart } = useApp()
-  const [expanded, setExpanded] = useState(false)
+  const [modalOpen, setModalOpen] = useState(false)
   const [localCartedNames, setLocalCartedNames] = useState<Set<string>>(new Set())
+
+  useEffect(() => {
+    if (!modalOpen) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setModalOpen(false) }
+    document.body.style.overflow = 'hidden'
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.body.style.overflow = ''
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [modalOpen])
 
   const cv = verdictData(analysis.colorVerdict)
 
@@ -333,15 +344,18 @@ function AnalysisCard({ analysis, onDelete, onToggleFavorite }: {
             <p className="text-xs text-stone-500 mt-2 leading-relaxed line-clamp-2">{analysis.overallRecommendation}</p>
           )}
 
-          {/* Top color swatches */}
-          {analysis.topColorPicks.length > 0 && (
-            <div className="flex items-center gap-1.5 mt-3">
-              {analysis.topColorPicks.map((pick) => (
-                <div key={pick.name} className="w-5 h-5 rounded-full border-2 border-white shadow-sm ring-1 ring-stone-100"
-                  style={{ backgroundColor: pick.hex }} title={pick.name} />
-              ))}
-            </div>
-          )}
+          {/* Top color swatches + recommended size */}
+          <div className="flex items-center gap-2 mt-3 flex-wrap">
+            {analysis.topColorPicks.length > 0 && analysis.topColorPicks.map((pick) => (
+              <div key={pick.name} className="w-5 h-5 rounded-full border-2 border-white shadow-sm ring-1 ring-stone-100"
+                style={{ backgroundColor: pick.hex }} title={pick.name} />
+            ))}
+            {analysis.recommendedSize && (
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-stone-900 text-white tracking-wide ml-1">
+                {analysis.recommendedSize}
+              </span>
+            )}
+          </div>
         </div>
       </div>
 
@@ -357,19 +371,54 @@ function AnalysisCard({ analysis, onDelete, onToggleFavorite }: {
             </button>
           )
         )}
-        <button onClick={() => setExpanded((v) => !v)}
+        <button onClick={() => setModalOpen(true)}
           className="inline-flex items-center gap-1.5 px-3.5 py-2 border border-stone-200 hover:bg-stone-50 text-stone-700 text-xs font-semibold rounded-xl transition-colors">
-          {expanded ? 'Hide Analysis' : 'View Full Analysis'}
-          <svg className={`w-3.5 h-3.5 transition-transform ${expanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-          </svg>
+          View Full Analysis
         </button>
       </div>
 
-      {/* Expanded full analysis */}
-      {expanded && (
-        <div className="px-5 pb-5 border-t border-stone-100 pt-4">
-          <FullAnalysisView analysis={analysis} onAddToCart={handleAddToCart} isCarted={isCarted} />
+      {/* Full-analysis modal */}
+      {modalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6"
+          onClick={() => setModalOpen(false)}
+        >
+          {/* Backdrop */}
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+
+          {/* Panel */}
+          <div
+            className="relative z-10 bg-[#FAFAF7] rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col"
+            style={{ maxHeight: 'min(88vh, 900px)' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Sticky header */}
+            <div className="flex items-start justify-between gap-4 px-6 py-5 border-b border-stone-100 bg-white rounded-t-2xl flex-shrink-0">
+              <div className="min-w-0">
+                {analysis.productBrand && (
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-stone-400">{analysis.productBrand}</p>
+                )}
+                <p className="font-serif text-xl text-stone-900 mt-0.5 leading-tight">{analysis.productName}</p>
+                <p className="text-xs text-stone-400 mt-1 capitalize">
+                  {analysis.productCategory}{analysis.productPrice ? ` · $${analysis.productPrice.toFixed(2)}` : ''}
+                  {analysis.storeName !== 'Atelier Analysis' ? ` · ${analysis.storeName}` : ''}
+                </p>
+              </div>
+              <button
+                onClick={() => setModalOpen(false)}
+                className="flex-shrink-0 w-8 h-8 rounded-full bg-stone-100 hover:bg-stone-200 flex items-center justify-center text-stone-500 hover:text-stone-900 transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Scrollable content */}
+            <div className="overflow-y-auto flex-1 px-6 pb-6">
+              <FullAnalysisView analysis={analysis} onAddToCart={handleAddToCart} isCarted={isCarted} />
+            </div>
+          </div>
         </div>
       )}
 

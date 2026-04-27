@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { useApp } from '../context/AppContext'
-import { ColorPalette, UserProfile } from '../types'
+import { ColorPalette, UserProfile, BodyProfile } from '../types'
 import { resizeImageToBase64 } from '../utils/colorUtils'
 import PaletteDisplay from '../components/PaletteDisplay'
 import BodyStyleDisplay from '../components/BodyStyleDisplay'
@@ -21,7 +21,7 @@ const ANALYSIS_MESSAGES = [
   'Generating your hex palette…',
 ]
 
-type Step = 'intro' | 'upload' | 'analyzing' | 'reveal' | 'body' | 'retailers' | 'done'
+type Step = 'intro' | 'upload' | 'analyzing' | 'reveal' | 'body' | 'sizes' | 'retailers' | 'done'
 
 export default function Onboarding() {
   const { setCurrentPage, setUserProfile } = useApp()
@@ -39,6 +39,11 @@ export default function Onboarding() {
   const [bust, setBust] = useState('')
   const [waist, setWaist] = useState('')
   const [hips, setHips] = useState('')
+  const [shirtSize, setShirtSize] = useState('')
+  const [braSize, setBraSize] = useState('')
+  const [pantsSize, setPantsSize] = useState('')
+  const [waistRise, setWaistRise] = useState<'high' | 'mid' | 'low' | ''>('')
+  const [shoeSize, setShoeSize] = useState('')
   const [cameraOpen, setCameraOpen] = useState(false)
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user')
   const [cameraError, setCameraError] = useState<string | null>(null)
@@ -171,22 +176,25 @@ export default function Onboarding() {
 
   const finish = () => {
     if (!palette) return
+    const hasBodyData = bodyType || height || bust || waist || hips || shirtSize || braSize || pantsSize || waistRise || shoeSize
     const profile: UserProfile = {
       id: crypto.randomUUID(),
       name: name || 'You',
       username: username || 'my_atelier',
       palette,
       favoriteRetailers: selectedRetailers,
-      bodyProfile:
-        bodyType || height || bust || waist || hips
-          ? {
-              bodyType: bodyType as UserProfile['bodyProfile'] extends undefined ? never : NonNullable<UserProfile['bodyProfile']>['bodyType'],
-              height,
-              bust,
-              waist,
-              hips,
-            }
-          : undefined,
+      bodyProfile: hasBodyData ? {
+        bodyType: bodyType as BodyProfile['bodyType'],
+        height: height || undefined,
+        bust: bust || undefined,
+        waist: waist || undefined,
+        hips: hips || undefined,
+        shirtSize: shirtSize || undefined,
+        braSize: braSize || undefined,
+        pantsSize: pantsSize || undefined,
+        waistRise: (waistRise as BodyProfile['waistRise']) || undefined,
+        shoeSize: shoeSize || undefined,
+      } : undefined,
     }
     setUserProfile(profile)
     setCurrentPage('feed')
@@ -197,8 +205,20 @@ export default function Onboarding() {
       prev.includes(r) ? prev.filter((x) => x !== r) : [...prev, r]
     )
 
+  const estimatedSize = (() => {
+    const b = parseFloat(bust), w = parseFloat(waist), h = parseFloat(hips)
+    const ref = !isNaN(b) ? b : !isNaN(h) ? h - 2 : !isNaN(w) ? w + 10 : NaN
+    if (isNaN(ref)) return null
+    if (ref <= 33) return 'XS'
+    if (ref <= 35) return 'S'
+    if (ref <= 37.5) return 'M'
+    if (ref <= 40) return 'L'
+    if (ref <= 42) return 'XL'
+    return 'XXL'
+  })()
+
   const progress = {
-    intro: 0, upload: 20, analyzing: 40, reveal: 55, body: 72, retailers: 88, done: 100,
+    intro: 0, upload: 17, analyzing: 34, reveal: 50, body: 66, sizes: 82, retailers: 93, done: 100,
   }[step]
 
   return (
@@ -440,7 +460,7 @@ export default function Onboarding() {
           <div className="space-y-6 animate-fade-in">
             <div>
               <p className="text-xs text-stone-400 uppercase tracking-widest font-medium mb-2">
-                Step 4 of 5 — Style Profile
+                Step 4 of 6 — Style Profile
               </p>
               <h1 className="font-serif text-3xl text-stone-900">Dress your best.</h1>
               <p className="text-stone-500 mt-2 text-sm leading-relaxed">
@@ -510,6 +530,145 @@ export default function Onboarding() {
                   </div>
                 ))}
               </div>
+
+              {estimatedSize && (
+                <div className="mt-3 flex items-center gap-2.5 bg-stone-50 border border-stone-100 rounded-xl px-4 py-3">
+                  <div className="w-8 h-8 rounded-full bg-stone-900 text-white flex items-center justify-center text-xs font-bold flex-shrink-0">
+                    {estimatedSize}
+                  </div>
+                  <p className="text-xs text-stone-600">
+                    Based on your measurements, we estimate you're a <span className="font-semibold">{estimatedSize}</span>. You'll confirm your actual sizes next.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={() => setStep('sizes')}
+                className="w-full py-3.5 bg-stone-900 text-white text-sm font-semibold rounded-xl hover:bg-stone-800 transition-colors"
+              >
+                Continue
+              </button>
+              <button
+                onClick={() => setStep('sizes')}
+                className="w-full text-center text-sm text-stone-400 hover:text-stone-600"
+              >
+                Skip for now
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── Step: Sizes ── */}
+        {step === 'sizes' && (
+          <div className="space-y-6 animate-fade-in">
+            <div>
+              <p className="text-xs text-stone-400 uppercase tracking-widest font-medium mb-2">
+                Step 5 of 6 — Sizing
+              </p>
+              <h1 className="font-serif text-3xl text-stone-900">Let's nail your fit.</h1>
+              <p className="text-stone-500 mt-2 text-sm leading-relaxed">
+                Tell us your usual sizes so we can recommend the right fit every time.
+              </p>
+            </div>
+
+            {estimatedSize && (
+              <div className="flex items-center gap-3 bg-stone-900 text-white rounded-2xl px-5 py-4">
+                <div className="w-10 h-10 rounded-full bg-white text-stone-900 flex items-center justify-center text-sm font-bold flex-shrink-0">
+                  {estimatedSize}
+                </div>
+                <div>
+                  <p className="text-sm font-semibold">Estimated size: {estimatedSize}</p>
+                  <p className="text-xs text-stone-300 mt-0.5">Based on your measurements — confirm or adjust below.</p>
+                </div>
+              </div>
+            )}
+
+            {/* Tops */}
+            <div className="space-y-4">
+              <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest">Tops & Shirts</p>
+
+              <div>
+                <label className="block text-xs font-medium text-stone-500 mb-2">Shirt size</label>
+                <div className="flex flex-wrap gap-2">
+                  {['XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL'].map((s) => (
+                    <button
+                      key={s}
+                      onClick={() => setShirtSize(shirtSize === s ? '' : s)}
+                      className={`px-4 py-2 rounded-xl border text-sm font-medium transition-colors ${
+                        shirtSize === s
+                          ? 'border-stone-900 bg-stone-900 text-white'
+                          : 'border-stone-200 text-stone-700 hover:border-stone-400'
+                      }`}
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-stone-500 mb-1.5">Bra size</label>
+                <input
+                  value={braSize}
+                  onChange={(e) => setBraSize(e.target.value)}
+                  placeholder="e.g. 34B, 32C"
+                  className="w-full px-3 py-2.5 border border-stone-200 rounded-xl text-sm focus:outline-none focus:border-stone-400 bg-white"
+                />
+              </div>
+            </div>
+
+            {/* Bottoms */}
+            <div className="space-y-4 pt-4 border-t border-stone-100">
+              <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest">Bottoms</p>
+
+              <div>
+                <label className="block text-xs font-medium text-stone-500 mb-1.5">Pants / jeans size</label>
+                <input
+                  value={pantsSize}
+                  onChange={(e) => setPantsSize(e.target.value)}
+                  placeholder="e.g. 27, size 6, 28×30"
+                  className="w-full px-3 py-2.5 border border-stone-200 rounded-xl text-sm focus:outline-none focus:border-stone-400 bg-white"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-stone-500 mb-2">Rise preference</label>
+                <div className="flex gap-2">
+                  {([
+                    { val: 'high', label: 'High-waisted' },
+                    { val: 'mid',  label: 'Mid-rise'     },
+                    { val: 'low',  label: 'Low-rise'     },
+                  ] as { val: 'high' | 'mid' | 'low'; label: string }[]).map((opt) => (
+                    <button
+                      key={opt.val}
+                      onClick={() => setWaistRise(waistRise === opt.val ? '' : opt.val)}
+                      className={`flex-1 py-2.5 rounded-xl border text-xs font-medium transition-colors ${
+                        waistRise === opt.val
+                          ? 'border-stone-900 bg-stone-900 text-white'
+                          : 'border-stone-200 text-stone-700 hover:border-stone-400'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Shoes */}
+            <div className="space-y-3 pt-4 border-t border-stone-100">
+              <p className="text-xs font-semibold text-stone-400 uppercase tracking-widest">Shoes</p>
+              <div>
+                <label className="block text-xs font-medium text-stone-500 mb-1.5">Shoe size (US)</label>
+                <input
+                  value={shoeSize}
+                  onChange={(e) => setShoeSize(e.target.value)}
+                  placeholder="e.g. 8, 8.5, 9"
+                  className="w-full px-3 py-2.5 border border-stone-200 rounded-xl text-sm focus:outline-none focus:border-stone-400 bg-white"
+                />
+              </div>
             </div>
 
             <div className="flex flex-col gap-2">
@@ -534,7 +693,7 @@ export default function Onboarding() {
           <div className="space-y-6 animate-fade-in">
             <div>
               <p className="text-xs text-stone-400 uppercase tracking-widest font-medium mb-2">
-                Step 5 of 5 — Your Stores
+                Step 6 of 6 — Your Stores
               </p>
               <h1 className="font-serif text-3xl text-stone-900">Where do you love to shop?</h1>
               <p className="text-stone-500 mt-2 text-sm">

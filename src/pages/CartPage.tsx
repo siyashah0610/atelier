@@ -18,6 +18,20 @@ function estimateSize(body?: BodyProfile | null): string | null {
   return 'XXL'
 }
 
+function itemUrl(item: CartItem, estimatedSize: string | null): string {
+  let url = item.product.affiliateUrl || '#'
+  if (!url.startsWith('http')) return url
+  const sizeToApply = item.size || estimatedSize
+  if (!sizeToApply) return url
+  try {
+    const u = new URL(url)
+    if (!u.searchParams.has('size') && !u.searchParams.has('sz') && !u.searchParams.has('variant')) {
+      u.searchParams.set('size', sizeToApply)
+    }
+    return u.href
+  } catch { return url }
+}
+
 // For Shopify stores: if every item has ?variant=ID, build /cart/ID:qty,ID:qty
 function buildCheckoutUrl(items: CartItem[]): string {
   try {
@@ -124,9 +138,14 @@ export default function CartPage() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-xs text-stone-400 font-medium">{item.product.brand}</p>
-                        <p className="text-sm text-stone-800 font-medium leading-tight line-clamp-1 mt-0.5">
+                        <a
+                          href={itemUrl(item, estimatedSize)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-sm text-stone-800 font-medium leading-tight line-clamp-1 mt-0.5 hover:underline block"
+                        >
                           {item.product.name}
-                        </p>
+                        </a>
                         <div className="flex items-center gap-2 mt-1.5">
                           {estimatedSize && item.product.category === 'clothing' && (
                             <span className="text-xs text-stone-600 bg-stone-100 px-2 py-0.5 rounded font-medium">
@@ -169,23 +188,63 @@ export default function CartPage() {
 
                 {/* Checkout button per retailer */}
                 <div className="px-5 py-4 bg-stone-50 space-y-2">
-                  <a
-                    href={checkoutUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center justify-center gap-2 w-full py-3 bg-stone-900 text-white text-sm font-semibold rounded-xl hover:bg-stone-800 transition-colors"
-                  >
-                    {isShopifyCart ? `Add All to ${retailer} Cart` : `Shop at ${retailer}`}
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                    </svg>
-                  </a>
+                  {isShopifyCart ? (
+                    <a
+                      href={checkoutUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center justify-center gap-2 w-full py-3 bg-stone-900 text-white text-sm font-semibold rounded-xl hover:bg-stone-800 transition-colors"
+                    >
+                      {`Add All to ${retailer} Cart`}
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                      </svg>
+                    </a>
+                  ) : (
+                    <button
+                      onClick={() => {
+                        items.forEach(item => {
+                          const a = document.createElement('a')
+                          let finalUrl = item.product.affiliateUrl || '#'
+                          const sizeToApply = item.size || estimatedSize
+                          if (sizeToApply && finalUrl.startsWith('http')) {
+                            try {
+                              const u = new URL(finalUrl)
+                              if (!u.searchParams.has('size') && !u.searchParams.has('sz')) {
+                                u.searchParams.set('size', sizeToApply)
+                              }
+                              finalUrl = u.href
+                            } catch {}
+                          }
+                          a.href = finalUrl
+                          a.target = '_blank'
+                          a.rel = 'noopener noreferrer'
+                          document.body.appendChild(a)
+                          a.click()
+                          document.body.removeChild(a)
+                        })
+                      }}
+                      className="flex items-center justify-center gap-2 w-full py-3 bg-stone-900 text-white text-sm font-semibold rounded-xl hover:bg-stone-800 transition-colors"
+                    >
+                      {`Shop at ${retailer}`}
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                      </svg>
+                    </button>
+                  )}
                   <p className="text-[10px] text-stone-400 text-center">
                     {isShopifyCart
                       ? `Opens ${retailer}'s cart with your items pre-loaded`
-                      : `Opens the product page on ${retailer}'s website`}
+                      : items.length > 1
+                        ? `Opens ${items.length} product tabs on ${retailer}'s website`
+                        : `Opens the product page on ${retailer}'s website`}
                     {estimatedSize ? ` · Your est. size: ${estimatedSize}` : ''}
                   </p>
+                  {!isShopifyCart && items.length > 1 && (
+                    <p className="text-[10px] text-amber-700 bg-amber-50 border border-amber-100 px-2 py-1.5 rounded-lg text-center font-medium">
+                      ⚠️ Note: You may need to click "Allow pop-ups" in your browser's address bar to open all tabs at once.
+                    </p>
+                  )}
                 </div>
               </div>
             )
