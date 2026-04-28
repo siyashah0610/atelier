@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useApp } from '../context/AppContext'
-import { SavedAnalysis, Product } from '../types'
+import { SavedAnalysis, Product, WishList } from '../types'
 
 const VERDICT = {
   perfect: { emoji: '✦', label: 'Perfect',  pill: 'bg-emerald-600 text-white', bar: '#059669' },
@@ -33,10 +33,139 @@ function InCartBadge() {
         <rect x="1" y="1" width="14" height="14" rx="2" />
         <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 8l2.5 2.5 4-5" />
       </svg>
-      Already in cart
+      In cart
     </span>
   )
 }
+
+// ─── Wish List Picker ─────────────────────────────────────────────────────────
+
+function WishListPicker({ analysis, onClose }: { analysis: SavedAnalysis; onClose: () => void }) {
+  const { wishLists, createWishList, addToWishList } = useApp()
+  const [newListName, setNewListName] = useState('')
+  const [creating, setCreating] = useState(false)
+  const [selectedColor, setSelectedColor] = useState<SavedAnalysis['topColorPicks'][number] | null>(
+    analysis.topColorPicks[0] ?? null
+  )
+  const [addedTo, setAddedTo] = useState<Set<string>>(new Set(analysis.wishListIds ?? []))
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) onClose() }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [onClose])
+
+  function handleAdd(list: WishList) {
+    const chosenColor = selectedColor
+      ? { name: selectedColor.name, hex: selectedColor.hex, url: selectedColor.url, imageUrl: selectedColor.imageUrl, matchScore: selectedColor.matchScore, verdict: selectedColor.verdict }
+      : null
+    addToWishList(list.id, analysis, chosenColor)
+    setAddedTo((prev) => new Set([...prev, list.id]))
+  }
+
+  function handleCreateAndAdd() {
+    if (!newListName.trim()) return
+    const list = createWishList(newListName.trim())
+    const chosenColor = selectedColor
+      ? { name: selectedColor.name, hex: selectedColor.hex, url: selectedColor.url, imageUrl: selectedColor.imageUrl, matchScore: selectedColor.matchScore, verdict: selectedColor.verdict }
+      : null
+    addToWishList(list.id, analysis, chosenColor)
+    setAddedTo((prev) => new Set([...prev, list.id]))
+    setNewListName('')
+    setCreating(false)
+  }
+
+  return (
+    <div
+      ref={ref}
+      className="absolute bottom-full mb-2 right-0 z-50 w-72 bg-white rounded-2xl border border-stone-200 shadow-xl overflow-hidden"
+    >
+      <div className="px-4 pt-4 pb-3 border-b border-stone-100">
+        <p className="text-xs font-semibold text-stone-900">Save to Wish List</p>
+        {analysis.topColorPicks.length > 1 && (
+          <div className="mt-2">
+            <p className="text-[10px] text-stone-400 mb-1.5">Choose a colorway:</p>
+            <div className="flex gap-1.5 flex-wrap">
+              {analysis.topColorPicks.map((pick) => (
+                <button
+                  key={pick.name}
+                  onClick={() => setSelectedColor(pick)}
+                  title={pick.name}
+                  className={`w-6 h-6 rounded-full border-2 transition-all ${
+                    selectedColor?.name === pick.name ? 'border-stone-900 scale-110' : 'border-white shadow ring-1 ring-stone-100'
+                  }`}
+                  style={{ backgroundColor: pick.hex }}
+                />
+              ))}
+              <button
+                onClick={() => setSelectedColor(null)}
+                title="No specific color"
+                className={`w-6 h-6 rounded-full border-2 bg-stone-100 text-[9px] text-stone-500 flex items-center justify-center transition-all ${
+                  selectedColor === null ? 'border-stone-900 scale-110' : 'border-white shadow ring-1 ring-stone-100'
+                }`}
+              >
+                —
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="max-h-48 overflow-y-auto">
+        {wishLists.length === 0 && !creating && (
+          <p className="text-xs text-stone-400 text-center py-4">No lists yet</p>
+        )}
+        {wishLists.map((list) => {
+          const saved = addedTo.has(list.id)
+          return (
+            <button
+              key={list.id}
+              onClick={() => !saved && handleAdd(list)}
+              className={`w-full flex items-center justify-between px-4 py-3 text-left transition-colors ${
+                saved ? 'bg-stone-50 text-stone-400' : 'hover:bg-stone-50 text-stone-800'
+              }`}
+            >
+              <span className="text-sm font-medium truncate">{list.name}</span>
+              {saved ? (
+                <span className="text-[10px] text-emerald-600 font-semibold flex-shrink-0">Saved ✓</span>
+              ) : (
+                <span className="text-[10px] text-stone-400 flex-shrink-0">{list.items.length} items</span>
+              )}
+            </button>
+          )
+        })}
+      </div>
+
+      <div className="border-t border-stone-100 p-3">
+        {creating ? (
+          <div className="flex gap-2">
+            <input
+              autoFocus
+              value={newListName}
+              onChange={(e) => setNewListName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleCreateAndAdd(); if (e.key === 'Escape') setCreating(false) }}
+              placeholder="List name…"
+              className="flex-1 px-3 py-1.5 text-xs border border-stone-200 rounded-lg focus:outline-none focus:border-stone-400"
+            />
+            <button onClick={handleCreateAndAdd} className="px-3 py-1.5 bg-stone-900 text-white text-xs font-semibold rounded-lg">
+              Add
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => setCreating(true)}
+            className="w-full text-xs font-semibold text-stone-600 hover:text-stone-900 text-left transition-colors"
+          >
+            + New list
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─── Full Analysis View ───────────────────────────────────────────────────────
 
 function FullAnalysisView({ analysis, onAddToCart, isCarted }: {
   analysis: SavedAnalysis
@@ -247,13 +376,16 @@ function FullAnalysisView({ analysis, onAddToCart, isCarted }: {
   )
 }
 
+// ─── Analysis Card ────────────────────────────────────────────────────────────
+
 function AnalysisCard({ analysis, onDelete, onToggleFavorite }: {
   analysis: SavedAnalysis
   onDelete: () => void
   onToggleFavorite: () => void
 }) {
-  const { cart, addToCart } = useApp()
+  const { cart, addToCart, wishLists } = useApp()
   const [modalOpen, setModalOpen] = useState(false)
+  const [pickerOpen, setPickerOpen] = useState(false)
   const [localCartedNames, setLocalCartedNames] = useState<Set<string>>(new Set())
 
   useEffect(() => {
@@ -268,6 +400,7 @@ function AnalysisCard({ analysis, onDelete, onToggleFavorite }: {
   }, [modalOpen])
 
   const cv = verdictData(analysis.colorVerdict)
+  const savedListCount = (analysis.wishListIds ?? []).filter((id) => wishLists.some((l) => l.id === id)).length
 
   function isInGlobalCart(pickName: string): boolean {
     const targetName = `${analysis.productName} — ${pickName}`
@@ -319,9 +452,9 @@ function AnalysisCard({ analysis, onDelete, onToggleFavorite }: {
               </p>
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">
+              {/* Favorite heart */}
               <button
                 onClick={onToggleFavorite}
-                className="transition-colors"
                 title={analysis.isFavorited ? 'Remove from favorites' : 'Add to favorites'}
               >
                 <svg className={`w-5 h-5 transition-colors ${analysis.isFavorited ? 'fill-rose-500 text-rose-500' : 'fill-none text-stone-300 hover:text-rose-400'}`} stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
@@ -359,8 +492,8 @@ function AnalysisCard({ analysis, onDelete, onToggleFavorite }: {
         </div>
       </div>
 
-      {/* Quick actions row */}
-      <div className="px-5 pb-4 flex items-center gap-3">
+      {/* Quick actions */}
+      <div className="px-5 pb-4 flex items-center gap-2 flex-wrap">
         {topPick && (
           isCarted(topPick.name) ? (
             <InCartBadge />
@@ -371,9 +504,30 @@ function AnalysisCard({ analysis, onDelete, onToggleFavorite }: {
             </button>
           )
         )}
+
+        {/* Save to Wish List */}
+        <div className="relative">
+          <button
+            onClick={() => setPickerOpen((v) => !v)}
+            className={`inline-flex items-center gap-1.5 px-3.5 py-2 border text-xs font-semibold rounded-xl transition-colors ${
+              savedListCount > 0
+                ? 'border-stone-900 bg-stone-900 text-white hover:bg-stone-800'
+                : 'border-stone-200 hover:bg-stone-50 text-stone-700'
+            }`}
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+            </svg>
+            {savedListCount > 0 ? `Saved (${savedListCount})` : 'Save'}
+          </button>
+          {pickerOpen && (
+            <WishListPicker analysis={analysis} onClose={() => setPickerOpen(false)} />
+          )}
+        </div>
+
         <button onClick={() => setModalOpen(true)}
           className="inline-flex items-center gap-1.5 px-3.5 py-2 border border-stone-200 hover:bg-stone-50 text-stone-700 text-xs font-semibold rounded-xl transition-colors">
-          View Full Analysis
+          Full Analysis
         </button>
       </div>
 
@@ -383,16 +537,12 @@ function AnalysisCard({ analysis, onDelete, onToggleFavorite }: {
           className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6"
           onClick={() => setModalOpen(false)}
         >
-          {/* Backdrop */}
           <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
-
-          {/* Panel */}
           <div
             className="relative z-10 bg-[#FAFAF7] rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col"
             style={{ maxHeight: 'min(88vh, 900px)' }}
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Sticky header */}
             <div className="flex items-start justify-between gap-4 px-6 py-5 border-b border-stone-100 bg-white rounded-t-2xl flex-shrink-0">
               <div className="min-w-0">
                 {analysis.productBrand && (
@@ -413,8 +563,6 @@ function AnalysisCard({ analysis, onDelete, onToggleFavorite }: {
                 </svg>
               </button>
             </div>
-
-            {/* Scrollable content */}
             <div className="overflow-y-auto flex-1 px-6 pb-6">
               <FullAnalysisView analysis={analysis} onAddToCart={handleAddToCart} isCarted={isCarted} />
             </div>
@@ -448,6 +596,8 @@ function AnalysisCard({ analysis, onDelete, onToggleFavorite }: {
   )
 }
 
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
 export default function AnalysesPage() {
   const { analyses, deleteAnalysis, setCurrentPage, toggleFavoriteAnalysis } = useApp()
   const [activeTab, setActiveTab] = useState<'history' | 'favorites'>('history')
@@ -469,7 +619,6 @@ export default function AnalysesPage() {
   return (
     <div className="min-h-screen bg-[#FAFAF7] py-10 px-4">
       <div className="max-w-2xl mx-auto space-y-6">
-
         {/* Header */}
         <div className="flex items-center justify-between">
           <h1 className="font-serif text-3xl text-stone-900">Analyses</h1>
@@ -503,7 +652,7 @@ export default function AnalysesPage() {
             <p className="text-3xl mb-3">🤍</p>
             <p className="font-serif text-xl text-stone-900 mb-1">No favorites yet</p>
             <p className="text-sm text-stone-400 max-w-xs mx-auto">
-              Tap the heart on any analysis in History to save it here.
+              Tap the heart on any analysis to save it here.
             </p>
           </div>
         )}

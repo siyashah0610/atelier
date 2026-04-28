@@ -4,6 +4,7 @@ import dotenv from 'dotenv'
 import analysisRouter from './routes/analysis.js'
 import productsRouter from './routes/products.js'
 import productCheckRouter from './routes/productCheck.js'
+import faceCheckRouter from './routes/faceCheck.js'
 
 dotenv.config()
 
@@ -16,6 +17,7 @@ app.use(express.json({ limit: '60mb' }))
 app.use('/api/analyze', analysisRouter)
 app.use('/api/products', productsRouter)
 app.use('/api/product-check', productCheckRouter)
+app.use('/api/face-check', faceCheckRouter)
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }))
 

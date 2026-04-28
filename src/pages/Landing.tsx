@@ -23,9 +23,9 @@ const FEATURES = [
   },
   {
     icon: '⬡',
-    title: 'Curate Your Boards',
+    title: 'Wish Lists & Face Analysis',
     description:
-      'Save products to boards, build outfits, and optionally share them as public inspiration pages.',
+      'Save analyses into public or private wish lists, and get personalised makeup tips from your face shape.',
   },
   {
     icon: '◉',

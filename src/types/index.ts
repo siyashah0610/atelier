@@ -17,9 +17,9 @@ export interface ColorPalette {
   description: string
   undertone: 'warm' | 'cool' | 'neutral'
   confidenceScore?: number
-  dominantColors: string[]   // statement / best colors for the season
-  coolColors?: string[]      // blues, purples, teals
-  warmColors?: string[]      // reds, oranges, earthy tones
+  dominantColors: string[]
+  coolColors?: string[]
+  warmColors?: string[]
   neutrals: string[]
   toAvoid: string[]
   metals: ('silver' | 'gold' | 'rose gold')[]
@@ -40,12 +40,36 @@ export interface BodyProfile {
   shoeSize?: string
 }
 
+export type FaceShape = 'oval' | 'round' | 'square' | 'heart' | 'diamond' | 'oblong' | 'triangle'
+
+export interface FaceAnalysis {
+  faceShape: FaceShape
+  analyzedAt: string
+  confidence: number
+  makeupTips: {
+    contouring: string
+    blush: string
+    highlight: string
+    eyeMakeup: string
+    browShape: string
+    lips: string
+  }
+  accessories: {
+    earrings: string
+    necklaces: string
+    sunglasses: string
+    hats: string
+  }
+  overallAdvice: string
+}
+
 export interface UserProfile {
   id: string
   name: string
   username: string
   palette?: ColorPalette
   bodyProfile?: BodyProfile
+  faceAnalysis?: FaceAnalysis
   favoriteRetailers: string[]
 }
 
@@ -78,19 +102,39 @@ export interface CartItem {
   quantity: number
 }
 
-export interface Board {
+export interface WishListItem {
+  id: string
+  addedAt: string
+  analysisId: string
+  productName: string
+  productBrand: string
+  productCategory: string
+  productImageUrl: string | null
+  productPrice: number | null
+  storeName: string
+  colorScore: number
+  colorVerdict: string
+  chosenColor: {
+    name: string
+    hex: string
+    url: string | null
+    imageUrl: string | null
+    matchScore: number
+    verdict: string
+  } | null
+}
+
+export interface WishList {
   id: string
   name: string
   description?: string
   isPublic: boolean
-  coverImage?: string
-  products: Product[]
+  items: WishListItem[]
   createdAt: string
   updatedAt: string
-  type: 'inspiration' | 'outfit' | 'capsule'
 }
 
-export type Page = 'landing' | 'onboarding' | 'feed' | 'boards' | 'profile' | 'cart' | 'check' | 'analyses'
+export type Page = 'landing' | 'onboarding' | 'feed' | 'wishlists' | 'profile' | 'cart' | 'check' | 'analyses'
 
 export interface SavedAnalysis {
   id: string
@@ -115,6 +159,7 @@ export interface SavedAnalysis {
   }>
   storeName: string
   isFavorited?: boolean
+  wishListIds?: string[]
   recommendedSize?: string | null
   fullAnalysis?: {
     bodyTypeScore: number | null

@@ -1,11 +1,11 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react'
-import { UserProfile, Product, Board, CartItem, Page, SavedAnalysis } from '../types'
+import { UserProfile, Product, WishList, WishListItem, CartItem, Page, SavedAnalysis, FaceAnalysis } from '../types'
 
 interface AppState {
   currentPage: Page
   userProfile: UserProfile | null
   savedProducts: Product[]
-  boards: Board[]
+  wishLists: WishList[]
   cart: CartItem[]
   analyses: SavedAnalysis[]
   selectedProduct: Product | null
@@ -18,15 +18,17 @@ interface AppState {
   addToCart: (product: Product, size?: string) => void
   removeFromCart: (productId: string) => void
   cartCount: number
-  createBoard: (name: string, type: Board['type']) => Board
-  addToBoard: (boardId: string, product: Product) => void
-  removeFromBoard: (boardId: string, productId: string) => void
-  toggleBoardVisibility: (boardId: string) => void
-  deleteBoard: (boardId: string) => void
+  createWishList: (name: string) => WishList
+  addToWishList: (wishListId: string, analysis: SavedAnalysis, chosenColor: WishListItem['chosenColor']) => void
+  removeFromWishList: (wishListId: string, itemId: string) => void
+  deleteWishList: (wishListId: string) => void
+  toggleWishListVisibility: (wishListId: string) => void
+  renameWishList: (wishListId: string, name: string) => void
   updateRetailers: (retailers: string[]) => void
   saveAnalysis: (analysis: SavedAnalysis) => void
   deleteAnalysis: (id: string) => void
   toggleFavoriteAnalysis: (id: string) => void
+  saveFaceAnalysis: (analysis: FaceAnalysis) => void
 }
 
 const AppContext = createContext<AppState | null>(null)
@@ -59,19 +61,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [savedProducts, setSavedProducts] = useState<Product[]>(() =>
     load('atelier_saved', [])
   )
-  const [boards, setBoards] = useState<Board[]>(() => load('atelier_boards', []))
+  const [wishLists, setWishLists] = useState<WishList[]>(() => load('atelier_wishlists', []))
   const [cart, setCart] = useState<CartItem[]>(() => load('atelier_cart', []))
   const [analyses, setAnalyses] = useState<SavedAnalysis[]>(() => load('atelier_analyses', []))
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
 
   useEffect(() => { save('atelier_profile', userProfile) }, [userProfile])
   useEffect(() => { save('atelier_saved', savedProducts) }, [savedProducts])
-  useEffect(() => { save('atelier_boards', boards) }, [boards])
+  useEffect(() => { save('atelier_wishlists', wishLists) }, [wishLists])
   useEffect(() => { save('atelier_cart', cart) }, [cart])
   useEffect(() => { save('atelier_analyses', analyses) }, [analyses])
 
   const setCurrentPage = (page: Page) => setCurrentPageState(page)
-
   const setUserProfile = (profile: UserProfile) => setUserProfileState(profile)
 
   const saveProduct = useCallback((product: Product) => {
@@ -111,48 +112,101 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const cartCount = cart.reduce((sum, item) => sum + item.quantity, 0)
 
-  const createBoard = useCallback((name: string, type: Board['type']): Board => {
-    const board: Board = {
+  const createWishList = useCallback((name: string): WishList => {
+    const list: WishList = {
       id: crypto.randomUUID(),
       name,
-      type,
       isPublic: false,
-      products: [],
+      items: [],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     }
-    setBoards((prev) => [board, ...prev])
-    return board
+    setWishLists((prev) => [list, ...prev])
+    return list
   }, [])
 
-  const addToBoard = useCallback((boardId: string, product: Product) => {
-    setBoards((prev) =>
-      prev.map((b) =>
-        b.id === boardId && !b.products.find((p) => p.id === product.id)
-          ? { ...b, products: [...b.products, product], updatedAt: new Date().toISOString() }
-          : b
+  const addToWishList = useCallback((wishListId: string, analysis: SavedAnalysis, chosenColor: WishListItem['chosenColor']) => {
+    const item: WishListItem = {
+      id: crypto.randomUUID(),
+      addedAt: new Date().toISOString(),
+      analysisId: analysis.id,
+      productName: analysis.productName,
+      productBrand: analysis.productBrand,
+      productCategory: analysis.productCategory,
+      productImageUrl: chosenColor?.imageUrl ?? analysis.productImageUrl,
+      productPrice: analysis.productPrice,
+      storeName: analysis.storeName,
+      colorScore: chosenColor?.matchScore ?? analysis.colorScore,
+      colorVerdict: chosenColor?.verdict ?? analysis.colorVerdict,
+      chosenColor,
+    }
+    setWishLists((prev) =>
+      prev.map((l) =>
+        l.id === wishListId
+          ? { ...l, items: [...l.items, item], updatedAt: new Date().toISOString() }
+          : l
+      )
+    )
+    setAnalyses((prev) =>
+      prev.map((a) =>
+        a.id === analysis.id
+          ? { ...a, wishListIds: [...new Set([...(a.wishListIds ?? []), wishListId])] }
+          : a
       )
     )
   }, [])
 
-  const removeFromBoard = useCallback((boardId: string, productId: string) => {
-    setBoards((prev) =>
-      prev.map((b) =>
-        b.id === boardId
-          ? { ...b, products: b.products.filter((p) => p.id !== productId), updatedAt: new Date().toISOString() }
-          : b
-      )
+  const removeFromWishList = useCallback((wishListId: string, itemId: string) => {
+    setWishLists((prev) =>
+      prev.map((l) => {
+        if (l.id !== wishListId) return l
+        const removed = l.items.find((i) => i.id === itemId)
+        const newItems = l.items.filter((i) => i.id !== itemId)
+        // If no more items from this analysis in this list, remove wishListId from analysis
+        if (removed) {
+          const stillInList = newItems.some((i) => i.analysisId === removed.analysisId)
+          if (!stillInList) {
+            setAnalyses((prev) =>
+              prev.map((a) =>
+                a.id === removed.analysisId
+                  ? { ...a, wishListIds: (a.wishListIds ?? []).filter((id) => id !== wishListId) }
+                  : a
+              )
+            )
+          }
+        }
+        return { ...l, items: newItems, updatedAt: new Date().toISOString() }
+      })
     )
   }, [])
 
-  const toggleBoardVisibility = useCallback((boardId: string) => {
-    setBoards((prev) =>
-      prev.map((b) => (b.id === boardId ? { ...b, isPublic: !b.isPublic } : b))
+  const deleteWishList = useCallback((wishListId: string) => {
+    setWishLists((prev) => {
+      const list = prev.find((l) => l.id === wishListId)
+      if (list) {
+        const analysisIds = [...new Set(list.items.map((i) => i.analysisId))]
+        setAnalyses((prev) =>
+          prev.map((a) =>
+            analysisIds.includes(a.id)
+              ? { ...a, wishListIds: (a.wishListIds ?? []).filter((id) => id !== wishListId) }
+              : a
+          )
+        )
+      }
+      return prev.filter((l) => l.id !== wishListId)
+    })
+  }, [])
+
+  const toggleWishListVisibility = useCallback((wishListId: string) => {
+    setWishLists((prev) =>
+      prev.map((l) => (l.id === wishListId ? { ...l, isPublic: !l.isPublic } : l))
     )
   }, [])
 
-  const deleteBoard = useCallback((boardId: string) => {
-    setBoards((prev) => prev.filter((b) => b.id !== boardId))
+  const renameWishList = useCallback((wishListId: string, name: string) => {
+    setWishLists((prev) =>
+      prev.map((l) => (l.id === wishListId ? { ...l, name } : l))
+    )
   }, [])
 
   const updateRetailers = useCallback((retailers: string[]) => {
@@ -174,13 +228,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setAnalyses((prev) => prev.map((a) => a.id === id ? { ...a, isFavorited: !a.isFavorited } : a))
   }, [])
 
+  const saveFaceAnalysis = useCallback((analysis: FaceAnalysis) => {
+    setUserProfileState((prev) => {
+      if (!prev) return prev
+      return { ...prev, faceAnalysis: analysis }
+    })
+  }, [])
+
   return (
     <AppContext.Provider
       value={{
         currentPage,
         userProfile,
         savedProducts,
-        boards,
+        wishLists,
         cart,
         analyses,
         selectedProduct,
@@ -193,15 +254,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         addToCart,
         removeFromCart,
         cartCount,
-        createBoard,
-        addToBoard,
-        removeFromBoard,
-        toggleBoardVisibility,
-        deleteBoard,
+        createWishList,
+        addToWishList,
+        removeFromWishList,
+        deleteWishList,
+        toggleWishListVisibility,
+        renameWishList,
         updateRetailers,
         saveAnalysis,
         deleteAnalysis,
         toggleFavoriteAnalysis,
+        saveFaceAnalysis,
       }}
     >
       {children}

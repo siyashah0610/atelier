@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "Atelier — Palette Check",
+  "version": "1.0.0",
+  "description": "Analyse any product against your personal colour and style profile while you shop.",
+  "action": {
+    "default_popup": "index.html",
+    "default_title": "Atelier"
+  },
+  "permissions": [
+    "activeTab",
+    "storage"
+  ],
+  "host_permissions": [
+    "http://localhost:3001/*",
+    "https://*/*"
+  ],
+  "icons": {
+    "16":  "icons/icon16.png",
+    "48":  "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

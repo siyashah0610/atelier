@@ -35,7 +35,7 @@ export default function Header() {
             <nav className="hidden sm:flex items-center gap-7">
               {navLink('feed', 'Discover')}
               {navLink('check', 'Check Item')}
-              {navLink('boards', 'Boards')}
+              {navLink('wishlists', 'Wish Lists')}
               {navLink('analyses', 'Analyses')}
               {navLink('profile', 'Profile')}
             </nav>
@@ -57,12 +57,7 @@ export default function Header() {
                 className="relative flex items-center gap-1.5 text-sm font-medium text-stone-700 hover:text-stone-900"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={1.5}
-                    d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"
-                  />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
                 </svg>
                 {cartCount > 0 && (
                   <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-stone-900 text-white text-[10px] flex items-center justify-center font-medium">
@@ -78,7 +73,7 @@ export default function Header() {
       {/* Mobile nav */}
       {hasProfile && (
         <div className="sm:hidden flex border-t border-stone-100">
-          {(['feed', 'check', 'boards', 'analyses', 'profile', 'cart'] as Page[]).map((page) => (
+          {(['feed', 'check', 'wishlists', 'analyses', 'profile', 'cart'] as Page[]).map((page) => (
             <button
               key={page}
               onClick={() => setCurrentPage(page)}
@@ -86,7 +81,11 @@ export default function Header() {
                 currentPage === page ? 'text-stone-900 bg-stone-50' : 'text-stone-500'
               }`}
             >
-              {page === 'feed' ? 'discover' : page === 'check' ? 'check' : page === 'analyses' ? 'history' : page}
+              {page === 'feed' ? 'discover'
+                : page === 'check' ? 'check'
+                : page === 'wishlists' ? 'lists'
+                : page === 'analyses' ? 'history'
+                : page}
               {page === 'cart' && cartCount > 0 && (
                 <span className="ml-1 text-[10px] bg-stone-900 text-white rounded-full px-1">
                   {cartCount}

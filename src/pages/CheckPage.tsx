@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react'
 import { useApp } from '../context/AppContext'
 import { resizeImageToBase64 } from '../utils/colorUtils'
-import { Product, Board } from '../types'
+import { Product } from '../types'
 
 type InputMode = 'photo' | 'link' | 'barcode'
 type Verdict = 'perfect' | 'great' | 'good' | 'fair' | 'skip'
@@ -122,7 +122,7 @@ function extractStoreName(url: string | null | undefined): string {
 }
 
 export default function CheckPage() {
-  const { userProfile, boards, createBoard, addToBoard, addToCart, saveAnalysis, setCurrentPage } = useApp()
+  const { userProfile, addToCart, saveAnalysis, setCurrentPage } = useApp()
   const [mode, setMode] = useState<InputMode>('photo')
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [imagePayload, setImagePayload] = useState<{ data: string; mediaType: string } | null>(null)
@@ -133,11 +133,6 @@ export default function CheckPage() {
   const [errorHint, setErrorHint] = useState<string | null>(null)
   const [result, setResult] = useState<AnalysisResult | null>(null)
 
-  // Pin-saving state
-  const [savingOption, setSavingOption] = useState<string | null>(null) // option name being saved
-  const [selectedBoardId, setSelectedBoardId] = useState<string>('')
-  const [newBoardName, setNewBoardName] = useState('')
-  const [savedOptions, setSavedOptions] = useState<Set<string>>(new Set())
   const [cartedOptions, setCartedOptions] = useState<Set<string>>(new Set())
 
   const fileRef = useRef<HTMLInputElement>(null)
@@ -171,7 +166,6 @@ export default function CheckPage() {
 
   async function handleCheck() {
     setError(null); setErrorHint(null); setResult(null)
-    setSavedOptions(new Set()); setSavingOption(null)
     setLoading(true)
     try {
       let body: Record<string, unknown>
@@ -194,7 +188,6 @@ export default function CheckPage() {
       if (!res.ok) { setError(json.error ?? 'Something went wrong.'); setErrorHint(json.hint ?? null); return }
       const r = json as AnalysisResult
       setResult(r)
-      setSelectedBoardId(boards[0]?.id ?? '')
       const sourceUrl = mode === 'link' ? linkInput.trim() : r.productUrl
       saveAnalysis({
         id: `analysis-${Date.now()}`,
@@ -236,7 +229,6 @@ export default function CheckPage() {
     setResult(null); setError(null); setErrorHint(null)
     setPreviewUrl(null); setImagePayload(null)
     setLinkInput(''); setBarcodeInput('')
-    setSavedOptions(new Set()); setSavingOption(null)
     setCartedOptions(new Set())
     if (fileRef.current) fileRef.current.value = ''
   }
@@ -267,46 +259,6 @@ export default function CheckPage() {
     if (result?.productImageUrl) return result.productImageUrl
     if (previewUrl) return previewUrl
     return `https://picsum.photos/seed/${Date.now()}/400/500`
-  }
-
-  async function handleSavePin(option: OptionResult) {
-    if (!result) return
-    const imgUrl = option.imageUrl || pinImageUrl()
-
-    if (selectedBoardId === '__new__') {
-      if (!newBoardName.trim()) return
-      createBoard(newBoardName.trim(), 'inspiration')
-      // createBoard is sync but board list updates async; use a small delay then find the new board
-      await new Promise((r) => setTimeout(r, 50))
-      // Re-read boards from context isn't possible here directly; we'll just refetch below
-    }
-
-    const targetBoardId = selectedBoardId === '__new__'
-      ? boards.find((b) => b.name === newBoardName.trim())?.id ?? ''
-      : selectedBoardId
-
-    if (!targetBoardId) return
-
-    const pin: Product = {
-      id: `pin-${Date.now()}-${option.name.replace(/\s+/g, '-')}`,
-      name: `${result.productName}${option.name && option.name !== result.productName ? ` — ${option.name}` : ''}`,
-      brand: result.productBrand || 'Unknown',
-      retailer: 'Atelier Analysis',
-      price: 0,
-      category: result.productCategory as Product['category'],
-      imageUrl: imgUrl,
-      hexColors: [option.hex],
-      rating: 5,
-      reviewCount: 0,
-      affiliateUrl: mode === 'link' ? linkInput.trim() : '#',
-      tags: [option.verdict, result.productCategory, 'analyzed'],
-      bodyTypeTags: bodyProfile?.bodyType ? [bodyProfile.bodyType] : [],
-    }
-
-    addToBoard(targetBoardId, pin)
-    setSavedOptions((prev) => new Set([...prev, option.name]))
-    setSavingOption(null)
-    setNewBoardName('')
   }
 
   return (
@@ -630,8 +582,6 @@ export default function CheckPage() {
             <div className="space-y-2">
               {result.allOptions.map((opt) => {
                 const v = VERDICT[opt.verdict]
-                const isSaving = savingOption === opt.name
-                const saved = savedOptions.has(opt.name)
                 const carted = cartedOptions.has(opt.name)
                 return (
                   <div key={opt.name} className="bg-white rounded-2xl border border-stone-100 shadow-sm p-4">
@@ -711,59 +661,6 @@ export default function CheckPage() {
                       )}
                     </div>
 
-                    {/* Save as pin */}
-                    {!saved ? (
-                      <div className="mt-3 pl-12">
-                        {isSaving ? (
-                          <div className="space-y-2">
-                            <select
-                              value={selectedBoardId}
-                              onChange={(e) => setSelectedBoardId(e.target.value)}
-                              className="w-full text-xs border border-stone-200 rounded-lg px-3 py-2 bg-stone-50 focus:outline-none focus:border-stone-400"
-                            >
-                              {boards.map((b) => (
-                                <option key={b.id} value={b.id}>{b.name}</option>
-                              ))}
-                              <option value="__new__">+ Create new board…</option>
-                            </select>
-                            {selectedBoardId === '__new__' && (
-                              <input
-                                value={newBoardName}
-                                onChange={(e) => setNewBoardName(e.target.value)}
-                                placeholder="Board name"
-                                className="w-full text-xs border border-stone-200 rounded-lg px-3 py-2 bg-stone-50 focus:outline-none focus:border-stone-400"
-                              />
-                            )}
-                            <div className="flex gap-2">
-                              <button
-                                onClick={() => handleSavePin(opt)}
-                                className="flex-1 py-2 bg-stone-900 text-white text-xs font-semibold rounded-lg hover:bg-stone-800"
-                              >
-                                Save Pin
-                              </button>
-                              <button
-                                onClick={() => setSavingOption(null)}
-                                className="flex-1 py-2 border border-stone-200 text-stone-600 text-xs rounded-lg"
-                              >
-                                Cancel
-                              </button>
-                            </div>
-                          </div>
-                        ) : (
-                          <button
-                            onClick={() => {
-                              if (boards.length === 0) { createBoard('My Picks', 'inspiration'); setSelectedBoardId('') }
-                              setSavingOption(opt.name)
-                            }}
-                            className="text-xs text-stone-500 hover:text-stone-800 underline underline-offset-2 transition-colors"
-                          >
-                            Pin {opt.name} to a board
-                          </button>
-                        )}
-                      </div>
-                    ) : (
-                      <p className="mt-2 pl-12 text-xs text-emerald-600 font-medium">✓ Saved to board</p>
-                    )}
                   </div>
                 )
               })}

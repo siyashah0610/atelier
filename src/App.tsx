@@ -4,7 +4,7 @@ import Header from './components/Header'
 import Landing from './pages/Landing'
 import Onboarding from './pages/Onboarding'
 import FeedPage from './pages/FeedPage'
-import BoardsPage from './pages/BoardsPage'
+import WishListsPage from './pages/WishListsPage'
 import ProfilePage from './pages/ProfilePage'
 import CartPage from './pages/CartPage'
 import CheckPage from './pages/CheckPage'
@@ -20,7 +20,7 @@ function Pages() {
       {currentPage === 'onboarding' && <Onboarding />}
       {currentPage === 'feed' && <FeedPage />}
       {currentPage === 'check' && <CheckPage />}
-      {currentPage === 'boards' && <BoardsPage />}
+      {currentPage === 'wishlists' && <WishListsPage />}
       {currentPage === 'profile' && <ProfilePage />}
       {currentPage === 'cart' && <CartPage />}
       {currentPage === 'analyses' && <AnalysesPage />}

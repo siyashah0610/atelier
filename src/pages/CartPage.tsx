@@ -97,19 +97,6 @@ export default function CartPage() {
           </p>
         </div>
 
-        {/* Estimated size banner */}
-        {estimatedSize && (
-          <div className="mb-6 bg-white rounded-2xl border border-stone-100 px-5 py-4 flex items-center gap-3">
-            <div className="w-9 h-9 rounded-full bg-stone-900 text-white flex items-center justify-center text-xs font-bold flex-shrink-0">
-              {estimatedSize}
-            </div>
-            <div>
-              <p className="text-sm font-semibold text-stone-900">Your estimated size: {estimatedSize}</p>
-              <p className="text-xs text-stone-400 mt-0.5">Based on your measurements — sizes vary by brand, check each retailer's size guide.</p>
-            </div>
-          </div>
-        )}
-
         {/* Per-retailer groups */}
         <div className="space-y-6">
           {Object.entries(byRetailer).map(([retailer, items]) => {
