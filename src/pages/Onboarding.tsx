@@ -53,6 +53,7 @@ export default function Onboarding() {
   const [cameraOpen, setCameraOpen] = useState(false)
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user')
   const [cameraError, setCameraError] = useState<string | null>(null)
+  const [isDragOverUpload, setIsDragOverUpload] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
@@ -138,14 +139,35 @@ export default function Onboarding() {
     } catch { closeCamera() }
   }
 
-  const addFiles = (newFiles: FileList | null) => {
+  const addFiles = (newFiles: File[] | FileList | null) => {
     if (!newFiles) return
-    const arr = Array.from(newFiles).slice(0, 10 - files.length)
+    const arr = Array.from(newFiles)
+      .filter((file) => file.type.startsWith('image/'))
+      .slice(0, 10 - files.length)
+    if (!arr.length) return
     setFiles((prev) => [...prev, ...arr])
     arr.forEach((f) => {
       const url = URL.createObjectURL(f)
       setPreviews((prev) => [...prev, url])
     })
+  }
+
+  const handleUploadDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    if (files.length >= 10) return
+    setIsDragOverUpload(true)
+  }
+
+  const handleUploadDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    setIsDragOverUpload(false)
+  }
+
+  const handleUploadDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    setIsDragOverUpload(false)
+    if (files.length >= 10) return
+    addFiles(e.dataTransfer.files)
   }
 
   const removeFile = (i: number) => {
@@ -410,7 +432,14 @@ export default function Onboarding() {
               className="hidden"
               onChange={(e) => addFiles(e.target.files)}
             />
-            <div className="grid grid-cols-2 gap-3">
+            <div
+              onDragOver={handleUploadDragOver}
+              onDragLeave={handleUploadDragLeave}
+              onDrop={handleUploadDrop}
+              className={`grid grid-cols-2 gap-3 rounded-2xl transition-colors ${
+                isDragOverUpload ? 'bg-stone-50 ring-2 ring-stone-300 ring-offset-2' : ''
+              }`}
+            >
               <button
                 onClick={openCamera}
                 disabled={files.length >= 10}
