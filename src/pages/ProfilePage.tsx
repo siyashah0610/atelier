@@ -285,10 +285,6 @@ export default function ProfilePage() {
         {tab === 'palette' && userProfile.palette && (
           <div className="space-y-8 animate-fade-in">
             <PaletteDisplay palette={userProfile.palette} />
-            <div className="bg-white rounded-2xl p-5 border border-stone-100 space-y-5">
-              <h3 className="font-serif text-lg text-stone-900">Makeup Shades</h3>
-              <MakeupDisplay seasonalType={userProfile.palette.seasonalType} />
-            </div>
             <button
               onClick={() => {
                 if (confirm('Reset your analysis? This will clear your palette and take you back to onboarding.')) {
@@ -399,7 +395,17 @@ export default function ProfilePage() {
         )}
 
         {/* Face & Makeup tab */}
-        {tab === 'face' && <FaceAnalysisSection />}
+        {tab === 'face' && (
+          <div className="space-y-8 animate-fade-in">
+            <FaceAnalysisSection />
+            {userProfile.palette && (
+              <div className="bg-white rounded-2xl p-5 border border-stone-100 space-y-5">
+                <h3 className="font-serif text-lg text-stone-900">Makeup Shades</h3>
+                <MakeupDisplay seasonalType={userProfile.palette.seasonalType} />
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Saved tab */}
         {tab === 'saved' && (

@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { useApp } from '../context/AppContext'
-import { WishList, WishListItem } from '../types'
+import { WishList, WishListItem, Product } from '../types'
 
 const VERDICT_COLOR: Record<string, string> = {
   perfect: '#059669',
@@ -11,9 +11,31 @@ const VERDICT_COLOR: Record<string, string> = {
 }
 
 function ItemCard({ item, onRemove }: { item: WishListItem; onRemove: () => void }) {
+  const { addToCart } = useApp()
+  const [carted, setCarted] = useState(false)
   const verdictColor = VERDICT_COLOR[item.colorVerdict] ?? '#A8A29E'
   const displayImage = item.chosenColor?.imageUrl ?? item.productImageUrl
   const shopUrl = item.chosenColor?.url ?? null
+
+  function handleAddToCart() {
+    const product: Product = {
+      id: `wishlist-${item.id}`,
+      name: item.productName,
+      brand: item.productBrand || 'Unknown',
+      retailer: item.storeName,
+      price: item.productPrice ?? 0,
+      category: item.productCategory as Product['category'],
+      imageUrl: item.chosenColor?.imageUrl ?? item.productImageUrl ?? '',
+      hexColors: item.chosenColor ? [item.chosenColor.hex] : [],
+      rating: 5,
+      reviewCount: 0,
+      affiliateUrl: item.chosenColor?.url ?? '#',
+      tags: [item.colorVerdict],
+    }
+    addToCart(product)
+    setCarted(true)
+    setTimeout(() => setCarted(false), 2000)
+  }
 
   return (
     <div className="bg-white rounded-2xl border border-stone-100 overflow-hidden group">
@@ -73,16 +95,28 @@ function ItemCard({ item, onRemove }: { item: WishListItem; onRemove: () => void
         {item.productPrice && (
           <p className="text-[10px] font-semibold text-stone-600 mt-1">${item.productPrice.toFixed(2)}</p>
         )}
-        {shopUrl && (
-          <a
-            href={shopUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mt-2 block w-full py-1.5 rounded-lg bg-stone-900 text-white text-[10px] font-semibold text-center hover:bg-stone-700 transition-colors"
+        <div className="mt-2 flex flex-col gap-1">
+          {shopUrl && (
+            <a
+              href={shopUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block w-full py-1.5 rounded-lg bg-stone-900 text-white text-[10px] font-semibold text-center hover:bg-stone-700 transition-colors"
+            >
+              Shop →
+            </a>
+          )}
+          <button
+            onClick={handleAddToCart}
+            className={`block w-full py-1.5 rounded-lg text-[10px] font-semibold text-center transition-colors ${
+              carted
+                ? 'bg-emerald-600 text-white'
+                : 'bg-white border border-stone-200 text-stone-700 hover:bg-stone-50'
+            }`}
           >
-            Shop →
-          </a>
-        )}
+            {carted ? '✓ Added to Cart' : 'Add to Cart'}
+          </button>
+        </div>
       </div>
     </div>
   )
@@ -111,20 +145,20 @@ function WishListCard({ list, onDelete, onToggleVisibility, onRemoveItem }: {
 
   return (
     <div className="bg-white rounded-2xl border border-stone-100 shadow-sm overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center gap-4 p-4">
+      {/* Header — click anywhere (except action buttons) to expand */}
+      <div
+        className="flex items-center gap-4 p-4 cursor-pointer select-none"
+        onClick={() => setExpanded((v) => !v)}
+      >
         {/* Cover mosaic */}
-        <button
-          onClick={() => setExpanded((v) => !v)}
-          className="w-16 h-16 rounded-xl overflow-hidden bg-stone-100 flex-shrink-0 grid grid-cols-2 gap-px"
-        >
+        <div className="w-16 h-16 rounded-xl overflow-hidden bg-stone-100 flex-shrink-0 grid grid-cols-2 gap-px">
           {coverImages.length === 0 && (
             <div className="col-span-2 row-span-2 flex items-center justify-center text-stone-300 text-2xl">✦</div>
           )}
           {coverImages.slice(0, 4).map((src, i) => (
             <img key={i} src={src} alt="" className="w-full h-full object-cover" />
           ))}
-        </button>
+        </div>
 
         <div className="flex-1 min-w-0">
           {editing ? (
@@ -134,22 +168,33 @@ function WishListCard({ list, onDelete, onToggleVisibility, onRemoveItem }: {
               onChange={(e) => setEditName(e.target.value)}
               onBlur={saveRename}
               onKeyDown={(e) => { if (e.key === 'Enter') saveRename(); if (e.key === 'Escape') setEditing(false) }}
+              onClick={(e) => e.stopPropagation()}
               className="w-full text-sm font-semibold text-stone-900 border-b border-stone-300 focus:outline-none bg-transparent pb-0.5"
             />
           ) : (
-            <button
-              onClick={() => setEditing(true)}
-              className="text-left font-semibold text-stone-900 text-sm hover:text-stone-600 transition-colors truncate block w-full"
-            >
-              {list.name}
-            </button>
+            <div className="flex items-center gap-1.5">
+              <span className="font-semibold text-stone-900 text-sm truncate">{list.name}</span>
+              <button
+                onClick={(e) => { e.stopPropagation(); setEditing(true) }}
+                className="text-stone-300 hover:text-stone-600 transition-colors flex-shrink-0"
+                title="Rename"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+              </button>
+            </div>
           )}
           <p className="text-xs text-stone-400 mt-0.5">
             {list.items.length} item{list.items.length !== 1 ? 's' : ''}
           </p>
         </div>
 
-        <div className="flex items-center gap-2 flex-shrink-0">
+        {/* Action buttons — stop propagation so they don't toggle expand */}
+        <div
+          className="flex items-center gap-2 flex-shrink-0"
+          onClick={(e) => e.stopPropagation()}
+        >
           <button
             onClick={onToggleVisibility}
             className={`text-[11px] px-2.5 py-1 rounded-full font-semibold transition-colors ${
@@ -166,12 +211,9 @@ function WishListCard({ list, onDelete, onToggleVisibility, onRemoveItem }: {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
             </svg>
           </button>
-          <button
-            onClick={() => setExpanded((v) => !v)}
-            className="text-stone-400 text-xs w-5 text-center"
-          >
+          <span className="text-stone-400 text-xs w-5 text-center pointer-events-none">
             {expanded ? '▲' : '▼'}
-          </button>
+          </span>
         </div>
       </div>
 

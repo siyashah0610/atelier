@@ -134,7 +134,7 @@ export interface WishList {
   updatedAt: string
 }
 
-export type Page = 'landing' | 'onboarding' | 'feed' | 'wishlists' | 'profile' | 'cart' | 'check' | 'analyses'
+export type Page = 'landing' | 'auth' | 'onboarding' | 'feed' | 'wishlists' | 'profile' | 'cart' | 'check' | 'analyses'
 
 export interface SavedAnalysis {
   id: string
