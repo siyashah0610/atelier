@@ -75,6 +75,14 @@ export interface UserProfile {
 
 export type ProductCategory = 'clothing' | 'shoes' | 'jewelry' | 'bags' | 'makeup'
 
+export interface ColorOption {
+  name: string
+  hex: string
+  matchScore: number
+  url: string
+  imageUrl: string
+}
+
 export interface Product {
   id: string
   name: string
@@ -94,6 +102,7 @@ export interface Product {
   bodyTypeTags?: string[]
   aspectRatio?: 'tall' | 'square'
   matchScore?: number
+  colorOptions?: ColorOption[]
 }
 
 export interface CartItem {

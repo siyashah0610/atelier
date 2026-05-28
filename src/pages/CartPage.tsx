@@ -1,6 +1,7 @@
 import React from 'react'
 import { useApp } from '../context/AppContext'
 import { CartItem, BodyProfile } from '../types'
+import { normalizePrice } from '../utils/priceUtils'
 
 // Estimate clothing size from body measurements (US women's standard)
 function estimateSize(body?: BodyProfile | null): string | null {
@@ -65,7 +66,7 @@ export default function CartPage() {
     return acc
   }, {})
 
-  const total = cart.reduce((sum, item) => sum + item.product.price * item.quantity, 0)
+  const total = cart.reduce((sum, item) => sum + normalizePrice(item.product.price) * item.quantity, 0)
 
   if (cart.length === 0) {
     return (
@@ -100,7 +101,7 @@ export default function CartPage() {
         {/* Per-retailer groups */}
         <div className="space-y-6">
           {Object.entries(byRetailer).map(([retailer, items]) => {
-            const subtotal = items.reduce((sum, item) => sum + item.product.price * item.quantity, 0)
+            const subtotal = items.reduce((sum, item) => sum + normalizePrice(item.product.price) * item.quantity, 0)
             const checkoutUrl = buildCheckoutUrl(items)
             const isShopifyCart = checkoutUrl.includes('/cart/') && !checkoutUrl.includes('/products/')
 
@@ -157,7 +158,7 @@ export default function CartPage() {
                       </div>
                       <div className="flex flex-col items-end gap-2">
                         <p className="font-semibold text-stone-900 text-sm">
-                          ${(item.product.price * item.quantity).toFixed(2)}
+                          ${(normalizePrice(item.product.price) * item.quantity).toFixed(2)}
                         </p>
                         {item.quantity > 1 && (
                           <p className="text-xs text-stone-400">×{item.quantity}</p>
@@ -245,7 +246,7 @@ export default function CartPage() {
             {Object.entries(byRetailer).map(([retailer, items]) => (
               <div key={retailer} className="flex justify-between text-stone-600">
                 <span>{retailer}</span>
-                <span>${items.reduce((s, i) => s + i.product.price * i.quantity, 0).toFixed(2)}</span>
+                <span>${items.reduce((s, i) => s + normalizePrice(i.product.price) * i.quantity, 0).toFixed(2)}</span>
               </div>
             ))}
             <div className="border-t border-stone-100 pt-2 flex justify-between font-semibold text-stone-900">

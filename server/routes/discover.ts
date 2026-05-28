@@ -1,0 +1,788 @@
+import { Router, Request, Response } from 'express'
+import { readFileSync } from 'fs'
+import { join, dirname } from 'path'
+import { fileURLToPath } from 'url'
+import { Product, ProductCategory, ColorOption } from '../../src/types/index.js'
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = dirname(__filename)
+const PRODUCTS_DIR = join(__dirname, '../../products')
+
+// ── Color name → hex ──────────────────────────────────────────────────────────
+
+const COLOR_HEX: Record<string, string> = {
+  white: '#FFFFFF', 'off white': '#F5F0E8', 'off-white': '#F5F0E8',
+  cream: '#FFFDD0', ivory: '#FFFFF0', ecru: '#C2B280', vanilla: '#F3E5AB',
+  alabaster: '#F2F0EB', eggshell: '#F0EAD6', chalk: '#F5F2EE',
+  'fior di latte': '#FFF8F0', porcelain: '#F2EDE9', birch: '#C5B8A3',
+  bone: '#E3DAC9', linen: '#FAF0E6', butter: '#FFF0A0', natural: '#EAE0D5',
+  milk: '#FAFAFA', snow: '#FFFAFA', pearl: '#EAE0C8', parchment: '#F1E9D2',
+  oatmeal: '#D9C9A3', biscuit: '#D4A96A', sand: '#C2B280', dune: '#C8A882',
+  black: '#000000', 'jet black': '#0A0A0A', onyx: '#353935',
+  charcoal: '#36454F', graphite: '#474A51', 'dark grey': '#555555',
+  slate: '#708090', 'smoke grey': '#848884',
+  grey: '#808080', gray: '#808080', silver: '#C0C0C0', ash: '#B2BEB5',
+  smoke: '#738276', 'light grey': '#D3D3D3', 'light gray': '#D3D3D3',
+  heather: '#C9C9C9', cement: '#8D8878', stone: '#8C8680', pebble: '#A89880',
+  brown: '#8B4513', tan: '#D2B48C', camel: '#C19A6B', khaki: '#C3B091',
+  latte: '#AC7E59', mocha: '#967259', espresso: '#4B2F2F',
+  toffee: '#BB8E50', coffee: '#6F4E37', cafe: '#6F4E37', 'café': '#6F4E37',
+  cocoa: '#7B3F00', walnut: '#5C4033', taupe: '#8B8589',
+  peanut: '#B5651D', tobacco: '#84563C', amber: '#FFBF00',
+  caramel: '#C68642', honey: '#ECA84A', almond: '#EED9C4',
+  mole: '#7B6457', mushroom: '#8D7B6A', clay: '#A87858',
+  sienna: '#A0522D', umber: '#635147', bark: '#7B5C3B', saddle: '#8B4513',
+  whiskey: '#B57040', chestnut: '#954535', ginger: '#B06000',
+  nutmeg: '#753A23', pecan: '#A97547', praline: '#B07E5B',
+  tawny: '#CD5700', fawn: '#E5AA70', hazel: '#8E7618', beige: '#F5F5DC',
+  navy: '#001F5B', 'dark navy': '#000E3D', 'dark blue': '#00008B',
+  indigo: '#4B0082', midnight: '#191970', 'midnight blue': '#191970',
+  marine: '#01214B', admiral: '#003399', cobalt: '#0047AB',
+  blue: '#0047AB', 'royal blue': '#4169E1', sapphire: '#0F52BA',
+  'steel blue': '#4682B4', cornflower: '#6495ED', periwinkle: '#CCCCFF',
+  ocean: '#0077B6', cerulean: '#007BA7', azure: '#0080FF',
+  'sky blue': '#87CEEB', 'baby blue': '#89CFF0', 'powder blue': '#B0E0E6',
+  'light blue': '#ADD8E6', chambray: '#5B7FA6', denim: '#1560BD',
+  storm: '#4F666A', teal: '#008080', turquoise: '#40E0D0', aqua: '#00BFFF',
+  ripple: '#4B7FB5', harbor: '#2E4FA3', villa: '#4A6FA5',
+  green: '#228B22', 'dark green': '#006400', 'forest green': '#228B22',
+  forest: '#228B22', hunter: '#355E3B', emerald: '#009B77',
+  jade: '#00A86B', moss: '#8A9A5B', sage: '#77866A', olive: '#808000',
+  army: '#4B5320', 'army green': '#4B5320', basil: '#4B6043',
+  fern: '#71BC78', pistachio: '#93C572', leaf: '#5D8233',
+  avocado: '#568203', eucalyptus: '#44837A', seafoam: '#9FE2BF',
+  seagrass: '#737F3E', agave: '#8DA888', willow: '#7B8F6A',
+  mint: '#98FF98', spearmint: '#99E5B0', jungle: '#29AB87',
+  chartreuse: '#7FFF00', lime: '#32CD32', botanical: '#4A6741',
+  pickle: '#697A21', camo: '#78866B', military: '#4A5240',
+  red: '#CC0000', 'bright red': '#FF0000', scarlet: '#FF2400',
+  crimson: '#DC143C', cherry: '#DE3163', tomato: '#FF6347',
+  raspberry: '#E30B5C', burgundy: '#800020', wine: '#722F37',
+  maroon: '#800000', cranberry: '#9C2542', berry: '#8E3A59',
+  mulberry: '#C54B8C', bordeaux: '#4B0020', oxblood: '#4A0000',
+  claret: '#7F1734', rust: '#B7410E', terracotta: '#E2725B',
+  brick: '#CB4154', adobe: '#CC6633', 'burnt orange': '#CC5500',
+  pink: '#FFB6C1', 'light pink': '#FFB6C1', 'baby pink': '#F4C2C2',
+  blush: '#DE5D83', 'dusty rose': '#DCAE96', rose: '#FF007F',
+  'hot pink': '#FF69B4', fuchsia: '#FF00FF', magenta: '#FF00FF',
+  flamingo: '#FC8EAC', bubblegum: '#FFC1CC', 'blush pink': '#FF6F91',
+  petal: '#FFDDE1', rouge: '#AB4E52', mauve: '#C8A2C8',
+  'dusty pink': '#DCAE96', 'dusty mauve': '#C4A0A0', rosewood: '#9A4444',
+  melon: '#FEBAAD', salmon: '#FA8072', peach: '#FFCBA4',
+  nude: '#E3BC9A', 'dusty peach': '#EFBFAD', apricot: '#FBCEB1',
+  coral: '#FF7F50',
+  purple: '#800080', plum: '#8E4585', eggplant: '#614051',
+  grape: '#6F2DA8', violet: '#EE82EE', lavender: '#B57EDC',
+  lilac: '#B784A7', wisteria: '#C9A0DC', orchid: '#DA70D6',
+  amethyst: '#9966CC', iris: '#5A4FCF', 'sweet pea': '#F3D1DC',
+  yellow: '#FFD700', 'bright yellow': '#FFFF00', lemon: '#FFF44F',
+  buttercup: '#F3AD16', mustard: '#FFDB58', saffron: '#F4C430',
+  gold: '#FFD700', golden: '#DAA520', marigold: '#EAA221',
+  sunflower: '#FFC512', citrus: '#FFA500', orange: '#FF8C00',
+  tangerine: '#F28500', mango: '#FF9000', turmeric: '#CFA22C',
+  corn: '#E8C84B', lemonade: '#FFF44F', ochre: '#CC7722',
+  butterscotch: '#E88A2B',
+  metallic: '#C0C0C0', bronze: '#CD7F32', copper: '#B87333',
+  gunmetal: '#2C3539',
+}
+
+function colorNameToHex(name: string): string {
+  if (!name) return '#808080'
+  const lower = name.toLowerCase().trim()
+  if (/^#[0-9a-f]{6}$/i.test(lower)) return lower.toUpperCase()
+  if (COLOR_HEX[lower]) return COLOR_HEX[lower]
+  const parts = lower.split(/[\s\-\/]/)
+  const first = parts[0]
+  if (COLOR_HEX[first]) return COLOR_HEX[first]
+  const last = parts[parts.length - 1]
+  if (COLOR_HEX[last]) return COLOR_HEX[last]
+  const twoWord = parts.slice(0, 2).join(' ')
+  if (COLOR_HEX[twoWord]) return COLOR_HEX[twoWord]
+  return '#808080'
+}
+
+function mapCategory(raw: string | undefined): ProductCategory {
+  const s = (raw ?? '').toLowerCase()
+  if (/shoe|heel|boot|sandal|sneaker|loafer|flat|pump|mule|slipper|stiletto/.test(s)) return 'shoes'
+  if (/bag|handbag|purse|clutch|tote|backpack|wallet/.test(s)) return 'bags'
+  if (/jewelry|jewellery|necklace|earring|bracelet|ring|pendant/.test(s)) return 'jewelry'
+  if (/makeup|beauty|cosmetic|lipstick|mascara/.test(s)) return 'makeup'
+  return 'clothing'
+}
+
+// ── Shared ProductGroup type ──────────────────────────────────────────────────
+
+interface RawColorOption { name: string; hex: string; url: string; imageUrl: string }
+
+interface ProductGroup {
+  id: string
+  name: string
+  brand: string
+  retailer: string
+  price: number
+  originalPrice?: number
+  category: ProductCategory
+  primaryImageUrl: string
+  allColorOptions: RawColorOption[]
+  sizes: string[]
+  rating: number
+  reviewCount: number
+  tags: string[]
+}
+
+// ── Color math ────────────────────────────────────────────────────────────────
+
+function hexToRgb(hex: string): [number, number, number] | null {
+  const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex)
+  return m ? [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)] : null
+}
+
+function rgbToLab(r: number, g: number, b: number): [number, number, number] {
+  let rn = r / 255, gn = g / 255, bn = b / 255
+  rn = rn > 0.04045 ? Math.pow((rn + 0.055) / 1.055, 2.4) : rn / 12.92
+  gn = gn > 0.04045 ? Math.pow((gn + 0.055) / 1.055, 2.4) : gn / 12.92
+  bn = bn > 0.04045 ? Math.pow((bn + 0.055) / 1.055, 2.4) : bn / 12.92
+  const x = (rn * 0.4124 + gn * 0.3576 + bn * 0.1805) / 0.95047
+  const y = (rn * 0.2126 + gn * 0.7152 + bn * 0.0722) / 1.0
+  const z = (rn * 0.0193 + gn * 0.1192 + bn * 0.9505) / 1.08883
+  const f = (t: number) => (t > 0.008856 ? Math.cbrt(t) : 7.787 * t + 16 / 116)
+  return [116 * f(y) - 16, 500 * (f(x) - f(y)), 200 * (f(y) - f(z))]
+}
+
+function deltaE(hex1: string, hex2: string): number {
+  const rgb1 = hexToRgb(hex1), rgb2 = hexToRgb(hex2)
+  if (!rgb1 || !rgb2) return 100
+  const [l1, a1, b1] = rgbToLab(...rgb1)
+  const [l2, a2, b2] = rgbToLab(...rgb2)
+  return Math.sqrt((l2 - l1) ** 2 + (a2 - a1) ** 2 + (b2 - b1) ** 2)
+}
+
+function hexScore(productHex: string, paletteHexes: string[]): number {
+  let minD = Infinity
+  for (const ph of paletteHexes) {
+    const d = deltaE(productHex, ph)
+    if (d < minD) minD = d
+  }
+  return Math.round(Math.max(0, 100 - minD * 1.8))
+}
+
+// ── Color family for diversity interleaving ───────────────────────────────────
+
+function colorFamily(hex: string): string {
+  const rgb = hexToRgb(hex)
+  if (!rgb) return 'neutral'
+  const [r, g, b] = rgb
+  const max = Math.max(r, g, b), min = Math.min(r, g, b)
+  const l = (max + min) / 510
+  if (l < 0.12) return 'black'
+  if (l > 0.88) return 'white'
+  const s = max === min ? 0 : (l < 0.5 ? (max - min) / (max + min) : (max - min) / (510 - max - min))
+  if (s < 0.12) return 'neutral'
+  const h = max === r
+    ? 60 * ((g - b) / (max - min))
+    : max === g
+      ? 120 + 60 * ((b - r) / (max - min))
+      : 240 + 60 * ((r - g) / (max - min))
+  const hue = ((h % 360) + 360) % 360
+  if (hue < 20 || hue >= 340) return 'red'
+  if (hue < 50) return 'orange'
+  if (hue < 80) return 'yellow'
+  if (hue < 160) return 'green'
+  if (hue < 225) return 'teal'
+  if (hue < 285) return 'blue'
+  return 'purple'
+}
+
+const FAMILY_ORDER = ['neutral', 'black', 'white', 'blue', 'green', 'red', 'purple', 'orange', 'yellow', 'teal']
+
+function interleaveByFamily<T extends { primaryHex: string }>(items: T[]): T[] {
+  const buckets = new Map<string, T[]>()
+  for (const fam of FAMILY_ORDER) buckets.set(fam, [])
+  for (const item of items) {
+    const fam = colorFamily(item.primaryHex)
+    ;(buckets.get(fam) ?? buckets.get('neutral')!).push(item)
+  }
+  const result: T[] = []
+  const arrays = FAMILY_ORDER.map((f) => buckets.get(f)!)
+  const maxLen = Math.max(...arrays.map((a) => a.length))
+  for (let i = 0; i < maxLen; i++) {
+    for (const arr of arrays) {
+      if (i < arr.length) result.push(arr[i])
+    }
+  }
+  return result
+}
+
+// ── Static file loaders (used as immediate fallback) ──────────────────────────
+
+// Aritzia's product-image CDN path is /image/upload/, not /aritzia/image/upload/.
+// Their swatch URLs end in `_sw` — the on-model product photo for the same color
+// uses the `_on_a` suffix.
+function aritziaProductImageUrl(swatchUrlOrPublicId: string | undefined): string {
+  if (!swatchUrlOrPublicId) return ''
+  const cleaned = String(swatchUrlOrPublicId)
+    .replace(/\?.*$/, '')
+    .replace('/aritzia/image/upload/', '/image/upload/')
+  return cleaned.replace(/_sw$/, '_on_a')
+}
+function normalizePrice(value: unknown): number {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string') {
+    const n = Number(value)
+    return Number.isFinite(n) ? n : 0
+  }
+  if (value && typeof value === 'object') {
+    const candidate = (value as any).min ?? (value as any).price ?? (value as any).amount ?? (value as any).value
+    const n = typeof candidate === 'number' ? candidate : Number(String(candidate ?? ''))
+    return Number.isFinite(n) ? n : 0
+  }
+  return 0
+}
+function loadAritziaStatic(): ProductGroup[] {
+  const raw = JSON.parse(readFileSync(join(PRODUCTS_DIR, 'aritzia_us_product_catalog.json'), 'utf-8'))
+  return (raw.products as any[]).map((p) => ({
+    id: `aritzia-${p.masterId}`,
+    name: p.name,
+    brand: 'Aritzia',
+    retailer: 'Aritzia',
+    price: normalizePrice(p.priceRange?.min),
+    originalPrice: p.onSale ? normalizePrice(p.priceRange?.max) : undefined,
+    category: mapCategory(p.subCategory || p.category),
+    primaryImageUrl: aritziaProductImageUrl(p.colorVariants?.[0]?.swatchImageUrl),
+    allColorOptions: (p.colorVariants ?? []).map((cv: any) => ({
+      name: cv.colorName ?? '',
+      hex: colorNameToHex(cv.colorFamily || cv.colorName),
+      url: cv.url,
+      imageUrl: aritziaProductImageUrl(cv.swatchImageUrl),
+    })),
+    sizes: p.availableSizes ?? [],
+    rating: p.rating ?? 4.2,
+    reviewCount: p.reviewCount ?? 50,
+    tags: [p.subCategory, ...(Array.isArray(p.fabric) ? p.fabric : [p.fabric])].filter((t): t is string => typeof t === 'string' && !!t),
+  }))
+}
+
+function loadPPStatic(): ProductGroup[] {
+  const raw = JSON.parse(readFileSync(join(PRODUCTS_DIR, 'princess_polly_all_products.json'), 'utf-8')) as any[]
+  return raw.map((p) => {
+    const colors: string[] = p.colors ?? []
+    const image = (p.images as string[] | undefined)?.[0] ?? ''
+    const price = typeof p.price_min === 'number' ? p.price_min : parseFloat(String(p.price_min ?? 0))
+    const productUrl = p.product_url as string
+    return {
+      id: `pp-${p.product_id}`,
+      name: p.name,
+      brand: 'Princess Polly',
+      retailer: 'Princess Polly',
+      price,
+      category: mapCategory(p.product_type),
+      primaryImageUrl: image,
+      allColorOptions: colors.length
+        ? colors.map((c) => ({ name: c, hex: colorNameToHex(c), url: productUrl, imageUrl: image }))
+        : [{ name: '', hex: colorNameToHex(p.name), url: productUrl, imageUrl: image }],
+      sizes: p.sizes ?? [],
+      rating: 4.3,
+      reviewCount: 120,
+      tags: (p.tags as string[] | undefined)?.slice(0, 8) ?? [],
+    }
+  })
+}
+
+function loadReformationStatic(): ProductGroup[] {
+  const raw = JSON.parse(readFileSync(join(PRODUCTS_DIR, 'reformation_products (1).json'), 'utf-8'))
+  return (raw.products as any[]).map((p) => ({
+    id: `ref-${p.base_product_id}`,
+    name: p.title,
+    brand: 'Reformation',
+    retailer: 'Reformation',
+    price: parseFloat(String(p.price ?? '0').replace(/[^0-9.]/g, '')) || 0,
+    category: mapCategory(p.category),
+    primaryImageUrl: '',
+    allColorOptions: (p.available_colors ?? []).map((cv: any) => ({
+      name: cv.color_name as string,
+      hex: colorNameToHex(cv.color_name),
+      url: cv.url as string,
+      imageUrl: '',
+    })),
+    sizes: [],
+    rating: 4.4,
+    reviewCount: 80,
+    tags: [p.category].filter(Boolean) as string[],
+  }))
+}
+
+// ── Live API fetchers (run in background) ─────────────────────────────────────
+
+const SLEEP = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
+
+async function fetchAritziaAlgolia(): Promise<ProductGroup[]> {
+  const APP_ID = 'SONLJM8OH6'
+  const API_KEY = '1455bca7c6c33e746a0f38beb28422e6'
+  const INDEX = 'production_ecommerce_aritzia__Aritzia_US__products__en_US'
+  const HIT_SIZE = 200
+  const algoliaEndpoints = [
+    'https://SONLJM8OH6-dsn.algolia.net/1/indexes/*/queries',
+    'https://search-0.aritzia.com/1/indexes/*/queries',
+    'https://search-1.aritzia.com/1/indexes/*/queries',
+    'https://search-2.aritzia.com/1/indexes/*/queries',
+    'https://search-3.aritzia.com/1/indexes/*/queries',
+  ]
+  const algoliaHeaders = {
+    'X-Algolia-Application-Id': APP_ID,
+    'X-Algolia-API-Key': API_KEY,
+    'Content-Type': 'application/json',
+  }
+  const makeBody = (page: number, hitsPerPage: number) => JSON.stringify({
+    requests: [{
+      indexName: INDEX,
+      params: `query=&hitsPerPage=${hitsPerPage}&page=${page}&filters=orderable%3Atrue%20OR%20searchableIfUnavailable%3Atrue%20AND%20_tags%3Ais_not_duplicate&facetFilters=[]&enableABTest=true`,
+    }],
+  })
+
+  const fetchWithFallback = async (page: number, hitsPerPage: number) => {
+    let lastError: unknown
+    for (const endpoint of algoliaEndpoints) {
+      try {
+        const res = await fetch(endpoint, { method: 'POST', headers: algoliaHeaders, body: makeBody(page, hitsPerPage) })
+        if (!res.ok) throw new Error(`Algolia ${res.status} from ${endpoint}`)
+        return await res.json() as any
+      } catch (err) {
+        lastError = err
+      }
+    }
+    throw lastError instanceof Error ? lastError : new Error('All Aritzia Algolia endpoints failed')
+  }
+
+  const firstData = await fetchWithFallback(0, 1)
+  const nbHits: number = firstData?.results?.[0]?.nbHits ?? 0
+  const nbPages = Math.min(50, Math.ceil(nbHits / HIT_SIZE))
+
+  const allHits: any[] = []
+  for (let p = 0; p < nbPages; p++) {
+    const data = await fetchWithFallback(p, HIT_SIZE)
+    allHits.push(...(data?.results?.[0]?.hits ?? []))
+    if (p < nbPages - 1) await SLEEP(80)
+  }
+
+  // Each Algolia hit = one color variant; group by masterId
+  const byMaster = new Map<string, any[]>()
+  for (const hit of allHits) {
+    const mid = String(hit.masterId ?? (String(hit.objectID ?? '')).split('-')[0])
+    if (!mid || mid === 'undefined') continue
+    if (!byMaster.has(mid)) byMaster.set(mid, [])
+    byMaster.get(mid)!.push(hit)
+  }
+
+  const buildAritziaUrl = (publicId: string | undefined): string =>
+    publicId ? `https://assets.aritzia.com/image/upload/f_auto,q_auto/${publicId}` : ''
+
+  const buildProductUrl = (slug: string | undefined, colorId: string | undefined): string => {
+    if (!slug) return ''
+    const base = `https://www.aritzia.com/us/en/product/${slug}`
+    return colorId ? `${base}?color=${colorId}` : base
+  }
+
+  const groups: ProductGroup[] = []
+  for (const [masterId, hits] of byMaster) {
+    const p = hits[0]
+    // Each Algolia hit is a single color variant. Embedded colorVariants is rare; prefer per-hit data.
+    const variants = (p.colorVariants?.length ? p.colorVariants : hits).map((h: any) => {
+      const colorName = h.trueColor ?? h.colorName ?? ''
+      const colorFamily = h.refinementColor ?? h.colorFamily ?? ''
+      const colorId = h.color ?? h.colorId ?? ''
+      const slug = h.slug ?? p.slug ?? ''
+      const defaultImage = h.defaultImage ?? p.defaultImage
+      return {
+        colorName,
+        colorFamily,
+        colorId,
+        url: h.productUrl ?? buildProductUrl(slug, colorId),
+        imageUrl: buildAritziaUrl(defaultImage) || aritziaProductImageUrl(h.swatchImageUrl),
+        sizes: h.shippableSizes ?? h.availableSizes ?? h.sizeRun ?? [],
+      }
+    })
+
+    const priceRange = p.price ?? p.priceRange ?? {}
+    groups.push({
+      id: `aritzia-${masterId}`,
+      name: p.c_displayName || p.name || '',
+      brand: 'Aritzia',
+      retailer: 'Aritzia',
+      price: normalizePrice(priceRange.min ?? priceRange),
+      originalPrice: p.onSale ? normalizePrice(priceRange.max) : undefined,
+      category: mapCategory(p.primaryCategoryId || p.subCategory || p.category),
+      primaryImageUrl: buildAritziaUrl(p.defaultImage) || variants[0]?.imageUrl || '',
+      allColorOptions: variants.map((cv: any) => ({
+        name: cv.colorName,
+        hex: colorNameToHex(cv.colorFamily || cv.colorName),
+        url: cv.url,
+        imageUrl: cv.imageUrl,
+      })),
+      sizes: p.shippableSizes ?? p.availableSizes ?? variants[0]?.sizes ?? [],
+      rating: p.rating ?? 4.2,
+      reviewCount: p.reviewCount ?? 50,
+      tags: [p.subDept?.[0], p.primaryCategoryId, p.fabric?.[0]].filter(Boolean) as string[],
+    })
+  }
+  return groups
+}
+
+async function fetchReformationLiveProducts(): Promise<ProductGroup[]> {
+  const groups: ProductGroup[] = []
+  const seen = new Set<string>()
+  const base = 'https://www.thereformation.com/on/demandware.store/Sites-reformation-us-Site/en_US/Search-ShowAjax'
+
+  const decodeEntities = (value: string) => value
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, '&')
+
+  const maxPages = 6
+  for (let start = 0, page = 0; page < maxPages; start += 100, page++) {
+    const url = `${base}?cgid=clothing&start=${start}&sz=100`
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 10_000)
+    const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: controller.signal })
+    clearTimeout(timeout)
+    if (!res.ok) break
+
+    const html = await res.text()
+    const tilePattern = /data-pid="([^"]+)"[\s\S]{0,4000}?data-aggregate='([^']+)'[\s\S]{0,4000}?<meta[^>]+itemprop=["']image["'][^>]+content=["']([^"']+)["'][\s\S]{0,4000}?<img[^>]+alt=["']([^"']+)["'][^>]*>/gi
+
+    for (const match of html.matchAll(tilePattern)) {
+      const pid = match[1]?.trim()
+      const aggregateRaw = decodeEntities(match[2] ?? '')
+      const imageUrl = match[3]?.trim() ?? ''
+      const altText = match[4]?.trim() ?? ''
+      const hrefMatch = match[0].match(/href="([^"]+)"/i)
+      const href = hrefMatch?.[1] ? `https://www.thereformation.com${hrefMatch[1]}` : ''
+
+      if (!pid || !imageUrl || seen.has(pid)) continue
+
+      let price = 0
+      let category = 'clothing'
+      let name = altText
+
+      try {
+        const aggregate = JSON.parse(aggregateRaw)
+        const product = aggregate?.trackObject?.ecommerce?.click?.products?.[0] ?? {}
+        price = Number(product.price) || 0
+        category = String(product.category || 'clothing').toLowerCase()
+        name = String(product.name || altText)
+      } catch {
+        // fall back to the tile text if aggregate parsing fails
+      }
+
+      const colorName = altText.split(' - ').pop()?.trim() || name
+      seen.add(pid)
+
+      groups.push({
+        id: `ref-${pid}`,
+        name,
+        brand: 'Reformation',
+        retailer: 'Reformation',
+        price: normalizePrice(price),
+        category: mapCategory(category),
+        primaryImageUrl: imageUrl,
+        allColorOptions: [{
+          name: colorName,
+          hex: colorNameToHex(colorName),
+          url: href,
+          imageUrl,
+        }],
+        sizes: [],
+        rating: 4.4,
+        reviewCount: 80,
+        tags: [category].filter(Boolean) as string[],
+      })
+    }
+
+    if (html.includes('data-search-component="search-main"') && !/data-pid="/.test(html)) break
+    if ((html.match(/data-pid="/g)?.length ?? 0) < 100) break
+  }
+
+  return groups
+}
+
+async function fetchShopifyAll(
+  storeUrl: string,
+  brand: string,
+  retailer: string,
+  ratingDefault: number
+): Promise<ProductGroup[]> {
+  const groups: ProductGroup[] = []
+  const seen = new Set<string>()
+  let page = 1
+
+  while (page <= 100) {
+    const collectionUrl = `${storeUrl}/collections/all/products.json?limit=250&page=${page}`
+    const res = await fetch(collectionUrl, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' },
+    })
+    if (!res.ok) break
+    const data = await res.json() as any
+    const products: any[] = data.products ?? []
+    if (!products.length) break
+
+    for (const p of products) {
+      const id = `${brand.toLowerCase().replace(/\s+/g, '-')}-${p.id}`
+      if (seen.has(id)) continue
+      seen.add(id)
+
+      const opts: any[] = p.options ?? []
+      const colourOpt = opts.find((o) => /colou?r/i.test(o.name ?? ''))
+      const sizeOpt = opts.find((o) => /size/i.test(o.name ?? ''))
+      const colors: string[] = colourOpt?.values ?? []
+      const sizes: string[] = sizeOpt?.values ?? []
+      const images: string[] = (p.images as any[] | undefined)?.map((img: any) => img.src) ?? []
+      const primaryImage = images[0] ?? ''
+      const variants: any[] = p.variants ?? []
+      const price = variants.length
+        ? Math.min(...variants.map((v: any) => normalizePrice(v.price)))
+        : 0
+      const productUrl = `${storeUrl}/products/${p.handle}`
+
+      groups.push({
+        id,
+        name: p.title,
+        brand,
+        retailer,
+        price,
+        category: mapCategory(p.product_type),
+        primaryImageUrl: primaryImage,
+        allColorOptions: colors.length
+          ? colors.map((c) => ({ name: c, hex: colorNameToHex(c), url: productUrl, imageUrl: primaryImage }))
+          : [{ name: '', hex: colorNameToHex(p.title), url: productUrl, imageUrl: primaryImage }],
+        sizes,
+        rating: ratingDefault,
+        reviewCount: 100,
+        tags: (p.tags as string[] | undefined)?.slice(0, 8) ?? [],
+      })
+    }
+
+    if (products.length < 250) break
+    page++
+    await SLEEP(150)
+  }
+  return groups
+}
+
+// ── In-memory product cache ───────────────────────────────────────────────────
+
+let _allGroups: ProductGroup[] | null = null
+let _dataSource: 'static' | 'live' = 'static'
+let _lastRefreshed: Date | null = null
+let _refreshing = false
+
+function getAllGroups(): ProductGroup[] {
+  if (_allGroups) return _allGroups
+  // Cold start: load static files synchronously
+  console.log('[discover] Cold start — loading static catalogs…')
+  const t = Date.now()
+  _allGroups = [
+    ...loadAritziaStatic(),
+    ...loadPPStatic(),
+    ...loadReformationStatic(),
+  ]
+  _dataSource = 'static'
+  _lastRefreshed = new Date()
+  console.log(`[discover] ${_allGroups.length} products from static files in ${Date.now() - t}ms`)
+  return _allGroups
+}
+
+async function triggerLiveRefresh(): Promise<void> {
+  if (_refreshing) return
+  _refreshing = true
+  console.log('[discover] Starting live product refresh…')
+  const t = Date.now()
+
+  const [reformationRes, aritziaRes, ppRes, ediktedRes] = await Promise.allSettled([
+    fetchReformationLiveProducts(),
+    fetchAritziaAlgolia(),
+    fetchShopifyAll('https://us.princesspolly.com', 'Princess Polly', 'Princess Polly', 4.3),
+    fetchShopifyAll('https://edikted.com', 'Edikted', 'Edikted', 4.1),
+  ])
+
+  const newGroups: ProductGroup[] = []
+  if (aritziaRes.status === 'fulfilled') {
+    newGroups.push(...aritziaRes.value)
+    console.log(`[discover] Aritzia live: ${aritziaRes.value.length} products`)
+  } else {
+    console.error('[discover] Aritzia fetch failed:', aritziaRes.reason?.message)
+    newGroups.push(...loadAritziaStatic())
+  }
+  if (ppRes.status === 'fulfilled') {
+    newGroups.push(...ppRes.value)
+    console.log(`[discover] Princess Polly live: ${ppRes.value.length} products`)
+  } else {
+    console.error('[discover] PP fetch failed:', ppRes.reason?.message)
+    newGroups.push(...loadPPStatic())
+  }
+  if (ediktedRes.status === 'fulfilled') {
+    console.log(`[discover] Edikted live: ${ediktedRes.value.length} products`)
+    newGroups.push(...ediktedRes.value)
+  } else {
+    console.error('[discover] Edikted fetch failed:', ediktedRes.reason?.message)
+  }
+
+  if (reformationRes.status === 'fulfilled') {
+    newGroups.push(...reformationRes.value)
+    console.log(`[discover] Reformation live: ${reformationRes.value.length} products`)
+  } else {
+    console.error('[discover] Reformation fetch failed:', reformationRes.reason?.message)
+    newGroups.push(...loadReformationStatic())
+  }
+
+  if (newGroups.length > 0) {
+    _allGroups = newGroups
+    _dataSource = 'live'
+    _lastRefreshed = new Date()
+    resultCache.clear()
+    console.log(`[discover] Live refresh complete: ${_allGroups.length} products in ${((Date.now() - t) / 1000).toFixed(1)}s`)
+  }
+  _refreshing = false
+}
+
+// Start background refresh 5s after server boot, then every 6h
+setTimeout(triggerLiveRefresh, 5000)
+setInterval(triggerLiveRefresh, 6 * 60 * 60 * 1000)
+
+// ── Scoring & result cache ────────────────────────────────────────────────────
+
+interface CacheEntry { products: Product[]; ts: number }
+const resultCache = new Map<string, CacheEntry>()
+const CACHE_TTL = 5 * 60 * 1000
+
+function getCachedResult(key: string): Product[] | null {
+  const entry = resultCache.get(key)
+  if (!entry || Date.now() - entry.ts > CACHE_TTL) { resultCache.delete(key); return null }
+  return entry.products
+}
+
+function buildResult(paletteHexes: string[], catFilter: string, searchQ: string): Product[] {
+  const hasPalette = paletteHexes.length > 0
+  const groups = getAllGroups()
+
+  // Pre-compute deltaE for each unique hex vs palette (avoids redundant math)
+  const hexScoreCache = new Map<string, number>()
+  if (hasPalette) {
+    const uniqueHexes = new Set<string>()
+    for (const g of groups) for (const c of g.allColorOptions) uniqueHexes.add(c.hex)
+    for (const hex of uniqueHexes) hexScoreCache.set(hex, hexScore(hex, paletteHexes))
+  }
+
+  interface Scored {
+    group: ProductGroup
+    matchingColors: ColorOption[]
+    bestScore: number
+    primaryHex: string
+  }
+
+  const scored: Scored[] = []
+
+  for (const g of groups) {
+    if (catFilter && catFilter !== 'all' && g.category !== catFilter) continue
+    if (searchQ) {
+      const q = searchQ.toLowerCase()
+      if (!g.name.toLowerCase().includes(q) && !g.retailer.toLowerCase().includes(q) &&
+          !g.tags.some((t) => t.toLowerCase().includes(q))) continue
+    }
+
+    let matchingColors: ColorOption[]
+    let bestScore = 50
+
+    if (hasPalette) {
+      const options: ColorOption[] = g.allColorOptions.map((c) => ({
+        name: c.name,
+        hex: c.hex,
+        matchScore: hexScoreCache.get(c.hex) ?? 0,
+        url: c.url,
+        imageUrl: c.imageUrl,
+      }))
+      matchingColors = options.filter((c) => c.matchScore >= 35).sort((a, b) => b.matchScore - a.matchScore)
+      if (!matchingColors.length) continue
+      bestScore = matchingColors[0].matchScore
+      if (bestScore < 45) continue
+    } else {
+      matchingColors = g.allColorOptions.slice(0, 6).map((c) => ({
+        name: c.name, hex: c.hex, matchScore: 50, url: c.url, imageUrl: c.imageUrl,
+      }))
+    }
+
+    scored.push({
+      group: g,
+      matchingColors,
+      bestScore,
+      primaryHex: matchingColors[0].hex,
+    })
+  }
+
+  // Sort by score within each family, then interleave families for visual diversity
+  scored.sort((a, b) => b.bestScore - a.bestScore)
+  const diversified = interleaveByFamily(scored)
+
+  return diversified.map(({ group: g, matchingColors, bestScore }) => {
+    const primaryImage = g.primaryImageUrl
+      || matchingColors.find((c) => c.imageUrl && !/swatch|_sw\b/i.test(c.imageUrl))?.imageUrl
+      || matchingColors[0]?.imageUrl
+      || ''
+
+    return {
+    id: g.id,
+    name: g.name,
+    brand: g.brand,
+    retailer: g.retailer,
+    price: normalizePrice(g.price),
+    originalPrice: g.originalPrice,
+    category: g.category,
+    imageUrl: primaryImage,
+    hexColors: matchingColors.map((c) => c.hex),
+    sizes: g.sizes,
+    rating: g.rating,
+    reviewCount: g.reviewCount,
+    affiliateUrl: matchingColors[0].url,
+    tags: g.tags,
+    aspectRatio: 'tall' as const,
+    matchScore: hasPalette ? bestScore : undefined,
+    colorOptions: matchingColors,
+  }
+  })
+}
+
+// ── Route ─────────────────────────────────────────────────────────────────────
+
+const router = Router()
+
+router.get('/status', (_req: Request, res: Response) => {
+  const groups = _allGroups
+  res.json({
+    source: _dataSource,
+    productGroups: groups?.length ?? 0,
+    lastRefreshed: _lastRefreshed,
+    refreshing: _refreshing,
+  })
+})
+
+router.get('/', (req: Request, res: Response) => {
+  const { palette, category, search, page, limit } = req.query
+
+  const paletteHexes: string[] = palette
+    ? String(palette).split(',').map((h) => h.trim()).filter(Boolean)
+    : []
+  const catFilter = String(category ?? 'all')
+  const searchQ = String(search ?? '')
+  const pageNum = Math.max(0, parseInt(String(page ?? '0'), 10) || 0)
+  const pageSize = Math.min(100, Math.max(10, parseInt(String(limit ?? '50'), 10) || 50))
+
+  const cacheKey = `${paletteHexes.join(',')}|${catFilter}|${searchQ}`
+  let products = getCachedResult(cacheKey)
+  if (!products) {
+    products = buildResult(paletteHexes, catFilter, searchQ)
+    resultCache.set(cacheKey, { products, ts: Date.now() })
+  }
+
+  const slice = products.slice(pageNum * pageSize, (pageNum + 1) * pageSize)
+  res.json({ products: slice, total: products.length, page: pageNum, pageSize, source: _dataSource })
+})
+
+export default router

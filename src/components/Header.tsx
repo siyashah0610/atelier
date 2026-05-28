@@ -1,11 +1,26 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { useApp } from '../context/AppContext'
+import { useAuth } from '../context/AuthContext'
 import { Page } from '../types'
 
 export default function Header() {
   const { currentPage, setCurrentPage, userProfile, cartCount } = useApp()
+  const { signOut } = useAuth()
+  const [showProfileMenu, setShowProfileMenu] = useState(false)
+  const [isSigningOut, setIsSigningOut] = useState(false)
 
   const hasProfile = !!userProfile?.palette
+
+  const handleSignOut = async () => {
+    setIsSigningOut(true)
+    try {
+      await signOut()
+      setCurrentPage('landing')
+    } catch (err) {
+      console.error('Sign out failed:', err)
+      setIsSigningOut(false)
+    }
+  }
 
   const navLink = (page: Page, label: string) => (
     <button
@@ -65,6 +80,51 @@ export default function Header() {
                   </span>
                 )}
               </button>
+
+              {/* Profile menu */}
+              <div className="relative">
+                <button
+                  onClick={() => setShowProfileMenu(!showProfileMenu)}
+                  className="w-8 h-8 rounded-full bg-stone-900 text-white flex items-center justify-center text-xs font-semibold hover:bg-stone-800 transition-colors"
+                  title={userProfile?.name || 'Profile'}
+                >
+                  {(userProfile?.name || 'A')[0].toUpperCase()}
+                </button>
+                {showProfileMenu && (
+                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-lg border border-stone-200 z-50 overflow-hidden">
+                    <div className="px-4 py-3 border-b border-stone-100">
+                      <p className="text-xs font-semibold text-stone-500 uppercase tracking-widest">Account</p>
+                      <p className="text-sm text-stone-900 font-medium mt-1">{userProfile?.name || 'Atelier User'}</p>
+                      <p className="text-xs text-stone-400 mt-0.5">@{userProfile?.username || 'my_atelier'}</p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setShowProfileMenu(false)
+                        setCurrentPage('profile')
+                      }}
+                      className="w-full text-left px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors"
+                    >
+                      View Profile
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowProfileMenu(false)
+                        setCurrentPage('profile')
+                      }}
+                      className="w-full text-left px-4 py-2.5 text-sm text-stone-700 hover:bg-stone-50 transition-colors border-t border-stone-100"
+                    >
+                      Settings
+                    </button>
+                    <button
+                      onClick={handleSignOut}
+                      disabled={isSigningOut}
+                      className="w-full text-left px-4 py-2.5 text-sm text-rose-600 hover:bg-rose-50 transition-colors border-t border-stone-100 disabled:opacity-50"
+                    >
+                      {isSigningOut ? 'Signing out…' : 'Sign Out'}
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </>
         )}

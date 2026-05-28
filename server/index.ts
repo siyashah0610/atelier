@@ -4,6 +4,7 @@ import dotenv from 'dotenv'
 import { createClient } from '@supabase/supabase-js'
 import analysisRouter from './routes/analysis.js'
 import productsRouter from './routes/products.js'
+import discoverRouter from './routes/discover.js'
 import productCheckRouter from './routes/productCheck.js'
 import faceCheckRouter from './routes/faceCheck.js'
 
@@ -29,6 +30,7 @@ app.use(express.json({ limit: '60mb' }))
 
 app.use('/api/analyze', analysisRouter)
 app.use('/api/products', productsRouter)
+app.use('/api/discover', discoverRouter)
 app.use('/api/product-check', productCheckRouter)
 app.use('/api/face-check', faceCheckRouter)
 

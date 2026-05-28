@@ -44,7 +44,10 @@ export default function Landing() {
       <nav className="flex items-center justify-between px-6 py-5 max-w-7xl mx-auto">
         <span className="font-serif text-2xl font-semibold text-stone-900">atelier</span>
         <button
-          onClick={() => setCurrentPage('auth')}
+          onClick={() => {
+            localStorage.setItem('atelier_auth_mode', 'login')
+            setCurrentPage('onboarding')
+          }}
           className="text-sm font-medium text-stone-600 hover:text-stone-900 transition-colors"
         >
           Sign in

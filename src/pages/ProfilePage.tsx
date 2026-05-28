@@ -1,5 +1,7 @@
 import React, { useState, useRef } from 'react'
 import { useApp } from '../context/AppContext'
+import { formatPrice } from '../utils/priceUtils'
+import { useAuth } from '../context/AuthContext'
 import PaletteDisplay from '../components/PaletteDisplay'
 import BodyStyleDisplay from '../components/BodyStyleDisplay'
 import MakeupDisplay from '../components/MakeupDisplay'
@@ -207,8 +209,21 @@ function ExportForExtension() {
 export default function ProfilePage() {
   const { userProfile, savedProducts, setCurrentPage, selectedProduct, setSelectedProduct, updateRetailers } =
     useApp()
-  const [tab, setTab] = useState<'palette' | 'style' | 'face' | 'saved' | 'stores'>('palette')
+  const { signOut } = useAuth()
+  const [tab, setTab] = useState<'palette' | 'style' | 'face' | 'saved' | 'stores' | 'settings'>('palette')
   const [showAddStores, setShowAddStores] = useState(false)
+  const [isSigningOut, setIsSigningOut] = useState(false)
+
+  const handleSignOut = async () => {
+    setIsSigningOut(true)
+    try {
+      await signOut()
+      setCurrentPage('landing')
+    } catch (err) {
+      console.error('Sign out failed:', err)
+      setIsSigningOut(false)
+    }
+  }
 
   if (!userProfile) return null
 
@@ -252,7 +267,8 @@ export default function ProfilePage() {
             </div>
           )}
 
-          {/* Export for extension */}
+          {/* { id: 'settings', label: 'Settings' },
+              Export for extension */}
           <div className="mt-4">
             <ExportForExtension />
           </div>
@@ -430,7 +446,7 @@ export default function ProfilePage() {
                       <div className="p-2 text-left">
                         <p className="text-[10px] text-stone-400 uppercase tracking-widest">{product.brand}</p>
                         <p className="text-xs text-stone-800 font-medium mt-0.5 line-clamp-1">{product.name}</p>
-                        <p className="text-sm font-semibold text-stone-900 mt-0.5">${product.price}</p>
+                        <p className="text-sm font-semibold text-stone-900 mt-0.5">${formatPrice(product.price)}</p>
                       </div>
                     </button>
                   </div>
@@ -501,6 +517,40 @@ export default function ProfilePage() {
                 Browse Your Feed →
               </button>
             )}
+          </div>
+        )}
+
+        {/* Settings tab */}
+        {tab === 'settings' && (
+          <div className="animate-fade-in space-y-6">
+            <div className="bg-white rounded-2xl p-6 border border-stone-100 space-y-6">
+              <div>
+                <h3 className="font-serif text-lg text-stone-900 mb-1">Account</h3>
+                <p className="text-sm text-stone-400">Manage your Atelier account</p>
+              </div>
+
+              <div className="pt-4 border-t border-stone-100 space-y-4">
+                <div>
+                  <p className="text-xs font-semibold text-stone-500 uppercase tracking-widest mb-2">Name</p>
+                  <p className="text-sm text-stone-700">{userProfile.name || 'Not set'}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-stone-500 uppercase tracking-widest mb-2">Username</p>
+                  <p className="text-sm text-stone-700">@{userProfile.username || 'not_set'}</p>
+                </div>
+              </div>
+
+              <div className="pt-4 border-t border-stone-100">
+                <button
+                  onClick={handleSignOut}
+                  disabled={isSigningOut}
+                  className="w-full py-3 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 text-sm font-semibold rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isSigningOut ? 'Signing out…' : 'Sign Out'}
+                </button>
+                <p className="text-xs text-stone-400 text-center mt-2">You'll be logged out of all sessions</p>
+              </div>
+            </div>
           </div>
         )}
       </div>
