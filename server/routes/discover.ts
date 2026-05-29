@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express'
-import { readFileSync, readFileSync as readSync, unlinkSync } from 'fs'
+import { existsSync, readFileSync, readFileSync as readSync, unlinkSync } from 'fs'
 import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
 import { execSync } from 'child_process'
@@ -141,17 +141,17 @@ async function fetchWithCurl(url: string, headers?: Record<string, string>): Pro
 
     // Wait a bit for file to be fully written
     const start = Date.now()
-    while (!require('fs').existsSync(tmpFile) && Date.now() - start < 5000) {
-      require('child_process').execSync('sleep 0.01')
+    while (!existsSync(tmpFile) && Date.now() - start < 5000) {
+      execSync('sleep 0.01', { shell: '/bin/bash' })
     }
 
-    if (!require('fs').existsSync(tmpFile)) {
+    if (!existsSync(tmpFile)) {
       console.error(`[curl-fail] File not created: ${tmpFile}`)
       return null
     }
 
     // Read the file
-    const result = readSync(tmpFile, 'utf8')
+    const result = readFileSync(tmpFile, 'utf8')
     unlinkSync(tmpFile)
 
     if (!result || !result.trim()) return null
