@@ -103,6 +103,7 @@ export interface Product {
   imageUrl: string
   hexColors: string[]
   sizes?: string[]
+  inStock?: Record<string, boolean>
   rating: number
   reviewCount: number
   affiliateUrl: string
@@ -122,7 +123,8 @@ export interface CartItem {
 export interface WishListItem {
   id: string
   addedAt: string
-  analysisId: string
+  analysisId?: string
+  productId?: string
   productName: string
   productBrand: string
   productCategory: string
@@ -130,14 +132,14 @@ export interface WishListItem {
   productPrice: number | null
   storeName: string
   colorScore: number
-  colorVerdict: string
+  colorVerdict?: string
   chosenColor: {
     name: string
     hex: string
     url: string | null
     imageUrl: string | null
     matchScore: number
-    verdict: string
+    verdict?: string
   } | null
 }
 
@@ -152,6 +154,23 @@ export interface WishList {
 }
 
 export type Page = 'landing' | 'auth' | 'onboarding' | 'feed' | 'wishlists' | 'profile' | 'cart' | 'check' | 'analyses'
+
+export type NotificationType = 'price_increase' | 'price_decrease' | 'back_in_stock' | 'out_of_stock'
+
+export interface Notification {
+  id: string
+  type: NotificationType
+  productId: string
+  productName: string
+  productImage: string
+  wishListId: string
+  oldPrice?: number
+  newPrice?: number
+  oldStock?: Record<string, boolean>
+  newStock?: Record<string, boolean>
+  createdAt: string
+  read: boolean
+}
 
 export interface SavedAnalysis {
   id: string

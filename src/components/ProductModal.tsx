@@ -3,6 +3,7 @@ import { Product, ColorOption } from '../types'
 import { useApp } from '../context/AppContext'
 import { getMatchColor, getMatchLabel } from '../utils/colorUtils'
 import { formatPrice, normalizePrice } from '../utils/priceUtils'
+import ProductWishListPicker from './ProductWishListPicker'
 
 interface Props {
   product: Product
@@ -10,11 +11,12 @@ interface Props {
 }
 
 export default function ProductModal({ product, onClose }: Props) {
-  const { isProductSaved, saveProduct, unsaveProduct, addToCart } = useApp()
-  const saved = isProductSaved(product.id)
+  const { wishLists, addToCart } = useApp()
   const [selectedSize, setSelectedSize] = useState<string | undefined>(product.sizes?.[0])
   const [addedToCart, setAddedToCart] = useState(false)
   const [imgError, setImgError] = useState(false)
+  const [showWishListPicker, setShowWishListPicker] = useState(false)
+  const inAnyWishList = wishLists.some(list => list.items.some(item => item.productId === product.id))
 
   // Color option selection
   const options: ColorOption[] = product.colorOptions?.length
@@ -213,12 +215,18 @@ export default function ProductModal({ product, onClose }: Props) {
 
               <div className="flex gap-2">
                 <button
-                  onClick={() => (saved ? unsaveProduct(product.id) : saveProduct(product))}
-                  className={`flex-1 py-2.5 rounded-xl text-sm font-medium border transition-colors ${
-                    saved ? 'border-rose-300 bg-rose-50 text-rose-600' : 'border-stone-200 text-stone-700 hover:border-stone-400'
+                  onClick={() => setShowWishListPicker(!showWishListPicker)}
+                  className={`flex-1 py-2.5 rounded-xl text-sm font-medium border transition-colors relative ${
+                    inAnyWishList ? 'border-rose-300 bg-rose-50 text-rose-600' : 'border-stone-200 text-stone-700 hover:border-stone-400'
                   }`}
                 >
-                  {saved ? '♥ Saved' : '♡ Save'}
+                  {inAnyWishList ? '♥ In a List' : '♡ Add to List'}
+                  {showWishListPicker && (
+                    <ProductWishListPicker 
+                      product={product} 
+                      onClose={() => setShowWishListPicker(false)}
+                    />
+                  )}
                 </button>
                 <button
                   onClick={handleAddToCart}

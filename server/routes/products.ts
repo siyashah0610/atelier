@@ -75,6 +75,12 @@ router.get('/', async (req: Request, res: Response) => {
     )
   }
 
+  // Filter to only show products with at least one size in stock
+  products = products.filter((p) => {
+    if (!p.sizes || !p.inStock) return true // Show if no stock info available
+    return p.sizes.some((size) => p.inStock![size] === true)
+  })
+
   res.json(products)
 })
 

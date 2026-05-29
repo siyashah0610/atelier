@@ -57,7 +57,7 @@ function buildCheckoutUrl(items: CartItem[]): string {
 }
 
 export default function CartPage() {
-  const { cart, removeFromCart, setCurrentPage, userProfile } = useApp()
+  const { cart, removeFromCart, updateCartQuantity, setCurrentPage, userProfile } = useApp()
   const estimatedSize = estimateSize(userProfile?.bodyProfile)
 
   const byRetailer = cart.reduce<Record<string, CartItem[]>>((acc, item) => {
@@ -160,15 +160,8 @@ export default function CartPage() {
                         <p className="font-semibold text-stone-900 text-sm">
                           ${(normalizePrice(item.product.price) * item.quantity).toFixed(2)}
                         </p>
-                        {item.quantity > 1 && (
-                          <p className="text-xs text-stone-400">×{item.quantity}</p>
-                        )}
-                        <button
-                          onClick={() => removeFromCart(item.product.id)}
-                          className="text-xs text-stone-400 hover:text-rose-500 transition-colors"
-                        >
-                          Remove
-                        </button>
+                        <div className="flex items-center gap-3 bg-stone-50 border border-stone-100 rounded-lg p-1"><button onClick={() => updateCartQuantity(item.product.id, item.size, item.quantity - 1)} className="w-6 h-6 flex items-center justify-center text-stone-500 hover:text-stone-900 bg-white rounded-md shadow-sm transition-colors">-</button><span className="text-xs font-medium text-stone-700 w-4 text-center">{item.quantity}</span><button onClick={() => updateCartQuantity(item.product.id, item.size, item.quantity + 1)} className="w-6 h-6 flex items-center justify-center text-stone-500 hover:text-stone-900 bg-white rounded-md shadow-sm transition-colors">+</button></div>
+                        <button onClick={() => removeFromCart(item.product.id, item.size)} className="text-xs text-stone-400 hover:text-rose-500 transition-colors">Remove</button>
                       </div>
                     </div>
                   ))}

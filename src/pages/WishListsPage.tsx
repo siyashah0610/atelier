@@ -13,7 +13,7 @@ const VERDICT_COLOR: Record<string, string> = {
 function ItemCard({ item, onRemove }: { item: WishListItem; onRemove: () => void }) {
   const { addToCart } = useApp()
   const [carted, setCarted] = useState(false)
-  const verdictColor = VERDICT_COLOR[item.colorVerdict] ?? '#A8A29E'
+  const verdictColor = VERDICT_COLOR[item.colorVerdict ?? ''] ?? '#A8A29E'
   const displayImage = item.chosenColor?.imageUrl ?? item.productImageUrl
   const shopUrl = item.chosenColor?.url ?? null
 
@@ -24,13 +24,13 @@ function ItemCard({ item, onRemove }: { item: WishListItem; onRemove: () => void
       brand: item.productBrand || 'Unknown',
       retailer: item.storeName,
       price: item.productPrice ?? 0,
-      category: item.productCategory as Product['category'],
+      category: (item.productCategory || 'clothing') as Product['category'],
       imageUrl: item.chosenColor?.imageUrl ?? item.productImageUrl ?? '',
       hexColors: item.chosenColor ? [item.chosenColor.hex] : [],
       rating: 5,
       reviewCount: 0,
       affiliateUrl: item.chosenColor?.url ?? '#',
-      tags: [item.colorVerdict],
+      tags: [item.colorVerdict ?? ''],
     }
     addToCart(product)
     setCarted(true)

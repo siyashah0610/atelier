@@ -2,12 +2,15 @@ import React, { useState } from 'react'
 import { useApp } from '../context/AppContext'
 import { useAuth } from '../context/AuthContext'
 import { Page } from '../types'
+import NotificationsPanel from './NotificationsPanel'
 
 export default function Header() {
-  const { currentPage, setCurrentPage, userProfile, cartCount } = useApp()
+  const { currentPage, setCurrentPage, userProfile, cartCount, notifications } = useApp()
   const { signOut } = useAuth()
   const [showProfileMenu, setShowProfileMenu] = useState(false)
+  const [showNotifications, setShowNotifications] = useState(false)
   const [isSigningOut, setIsSigningOut] = useState(false)
+  const unreadCount = notifications.filter((n) => !n.read).length
 
   const hasProfile = !!userProfile?.palette
 
@@ -58,7 +61,6 @@ export default function Header() {
               {navLink('feed', 'Discover')}
               {navLink('check', 'Check Item')}
               {navLink('wishlists', 'Wish Lists')}
-              {navLink('analyses', 'Analyses')}
               {navLink('profile', 'Profile')}
             </nav>
 
@@ -74,6 +76,21 @@ export default function Header() {
                   ))}
                 </div>
               )}
+              <button
+                onClick={() => setShowNotifications(!showNotifications)}
+                className="relative flex items-center gap-1.5 text-sm font-medium text-stone-700 hover:text-stone-900"
+                title="Notifications"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                </svg>
+                {unreadCount > 0 && (
+                  <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-rose-500 text-white text-[10px] flex items-center justify-center font-medium">
+                    {unreadCount}
+                  </span>
+                )}
+              </button>
+
               <button
                 onClick={() => setCurrentPage('cart')}
                 className="relative flex items-center gap-1.5 text-sm font-medium text-stone-700 hover:text-stone-900"
@@ -162,6 +179,8 @@ export default function Header() {
           ))}
         </div>
       )}
+
+      <NotificationsPanel isOpen={showNotifications} onClose={() => setShowNotifications(false)} />
     </header>
   )
 }

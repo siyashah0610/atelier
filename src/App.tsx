@@ -10,7 +10,6 @@ import WishListsPage from './pages/WishListsPage'
 import ProfilePage from './pages/ProfilePage'
 import CartPage from './pages/CartPage'
 import CheckPage from './pages/CheckPage'
-import AnalysesPage from './pages/AnalysesPage'
 
 function Pages() {
   const { loading: authLoading } = useAuth()
@@ -38,7 +37,6 @@ function Pages() {
       {currentPage === 'wishlists'  && <WishListsPage />}
       {currentPage === 'profile'    && <ProfilePage />}
       {currentPage === 'cart'       && <CartPage />}
-      {currentPage === 'analyses'   && <AnalysesPage />}
     </>
   )
 }

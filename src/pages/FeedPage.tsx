@@ -231,6 +231,17 @@ export default function FeedPage() {
       {/* Sticky filter bar */}
       <div className="sticky top-14 sm:top-[57px] z-30 bg-[#FAFAF7]/95 backdrop-blur-sm border-b border-stone-100">
         <div className="max-w-7xl mx-auto px-4 py-3 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setIsFilterDrawerOpen(true)}
+            className="inline-flex items-center gap-1.5 rounded-full border border-stone-200 bg-white px-3 py-1.5 text-xs font-medium text-stone-700 shadow-sm hover:border-stone-300 hover:bg-stone-50 focus:outline-none focus:ring-2 focus:ring-stone-300/70"
+          >
+            <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-4.414 4.414A1 1 0 0016 12.414V19l-4-2v-4.586a1 1 0 00-.293-.707L7.293 7.293A1 1 0 017 6.586V4z" />
+            </svg>
+            Filters
+          </button>
+
           <div className="relative flex-1 max-w-xs">
             <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-stone-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -242,17 +253,6 @@ export default function FeedPage() {
               className="w-full pl-8 pr-3 py-1.5 text-xs border border-stone-200 rounded-full bg-white focus:outline-none focus:border-stone-400"
             />
           </div>
-
-          <button
-            type="button"
-            onClick={() => setIsFilterDrawerOpen(true)}
-            className="inline-flex items-center gap-1.5 rounded-full border border-stone-200 bg-white px-3 py-1.5 text-xs font-medium text-stone-700 shadow-sm hover:border-stone-300 hover:bg-stone-50 focus:outline-none focus:ring-2 focus:ring-stone-300/70"
-          >
-            <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-4.414 4.414A1 1 0 0016 12.414V19l-4-2v-4.586a1 1 0 00-.293-.707L7.293 7.293A1 1 0 017 6.586V4z" />
-            </svg>
-            Filters
-          </button>
 
           <div className="ml-auto flex-shrink-0">
             <select

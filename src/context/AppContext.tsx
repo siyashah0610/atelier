@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react'
-import { UserProfile, Product, WishList, WishListItem, CartItem, Page, SavedAnalysis, FaceAnalysis } from '../types'
+import { UserProfile, Product, WishList, WishListItem, CartItem, Page, SavedAnalysis, FaceAnalysis, Notification } from '../types'
 import { supabase } from '../lib/supabase'
 import { useAuth } from './AuthContext'
 
@@ -10,6 +10,7 @@ interface AppState {
   wishLists: WishList[]
   cart: CartItem[]
   analyses: SavedAnalysis[]
+  notifications: Notification[]
   selectedProduct: Product | null
   initialized: boolean
   dataLoading: boolean
@@ -20,10 +21,12 @@ interface AppState {
   unsaveProduct: (productId: string) => void
   isProductSaved: (productId: string) => boolean
   addToCart: (product: Product, size?: string) => void
-  removeFromCart: (productId: string) => void
+  removeFromCart: (productId: string, size?: string) => void
+  updateCartQuantity: (productId: string, size: string | undefined, quantity: number) => void
   cartCount: number
   createWishList: (name: string) => WishList
   addToWishList: (wishListId: string, analysis: SavedAnalysis, chosenColor: WishListItem['chosenColor']) => void
+  addProductToWishList: (wishListId: string, product: Product, chosenColor: WishListItem['chosenColor']) => void
   removeFromWishList: (wishListId: string, itemId: string) => void
   deleteWishList: (wishListId: string) => void
   toggleWishListVisibility: (wishListId: string) => void
@@ -33,6 +36,8 @@ interface AppState {
   deleteAnalysis: (id: string) => void
   toggleFavoriteAnalysis: (id: string) => void
   saveFaceAnalysis: (analysis: FaceAnalysis) => void
+  markNotificationAsRead: (notificationId: string) => void
+  clearNotifications: () => void
 }
 
 const AppContext = createContext<AppState | null>(null)
@@ -46,6 +51,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [wishLists, setWishLists] = useState<WishList[]>([])
   const [cart, setCart] = useState<CartItem[]>([])
   const [analyses, setAnalyses] = useState<SavedAnalysis[]>([])
+  const [notifications, setNotifications] = useState<Notification[]>([])
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
   const [initialized, setInitialized] = useState(false)
   const [dataLoading, setDataLoading] = useState(false)
@@ -54,7 +60,58 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const userRef = useRef(user)
   useEffect(() => { userRef.current = user }, [user])
 
+  // Generate sample notifications for demo (in production, compare with stored product history)
+  const generateSampleNotifications = useCallback((lists: WishList[]) => {
+    if (!lists.length) return
+    const sampleNotifications: Notification[] = []
+    const used = new Set<string>()
+
+    for (const list of lists) {
+      if (!list.items.length) continue
+      const item = list.items[0]
+      const notifId = `notif_${list.id}`
+
+      if (!used.has(notifId) && item.productPrice) {
+        // Randomly choose notification type
+        const types: import('../types').NotificationType[] = ['price_decrease', 'back_in_stock', 'price_increase', 'out_of_stock']
+        const type = types[Math.floor(Math.random() * types.length)]
+
+        const notification: Notification = {
+          id: notifId,
+          type,
+          productId: item.productId || '',
+          productName: item.productName,
+          productImage: item.productImageUrl || '',
+          wishListId: list.id,
+          oldPrice: type === 'price_decrease' ? item.productPrice + 20 : item.productPrice - 20,
+          newPrice: item.productPrice,
+          createdAt: new Date().toISOString(),
+          read: false,
+        }
+
+        sampleNotifications.push(notification)
+        used.add(notifId)
+      }
+
+      if (sampleNotifications.length >= 3) break
+    }
+
+    if (sampleNotifications.length > 0) {
+      setNotifications(sampleNotifications)
+    }
+  }, [])
+
+  // Generate sample notifications when wish lists are loaded
+  useEffect(() => {
+    if (initialized && wishLists.length > 0 && notifications.length === 0) {
+      generateSampleNotifications(wishLists)
+    }
+  }, [initialized, wishLists.length, notifications.length, generateSampleNotifications])
+
   // ─── Load / clear on auth change ────────────────────────────────────────────
+
+  // Track if we've already loaded data for this user to prevent duplicate loads
+  const dataLoadedRef = useRef<string | null>(null)
 
   useEffect(() => {
     if (!user) {
@@ -63,10 +120,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setAnalyses([])
       setSavedProducts([])
       setCart([])
+      setNotifications([])
       setCurrentPageState('landing')
       setInitialized(true)
+      dataLoadedRef.current = null
       return
     }
+
+    // Only load data once per user
+    if (dataLoadedRef.current === user.id) {
+      return
+    }
+
+    dataLoadedRef.current = user.id
     loadUserData(user.id)
   }, [user?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -139,9 +205,29 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           faceAnalysis: p.face_analysis ?? undefined,
           favoriteRetailers: p.favorite_retailers ?? [],
         })
-        setCurrentPageState(p.palette ? 'profile' : 'onboarding')
+        setCurrentPageState(p.palette ? 'feed' : 'onboarding')
       } else {
+        // Create default profile if it doesn't exist
+        const defaultProfile: UserProfile = {
+          id: userId,
+          name: '',
+          username: '',
+          favoriteRetailers: [],
+        }
+        setUserProfileState(defaultProfile)
         setCurrentPageState('onboarding')
+        // Upsert the profile to ensure it exists for future loads
+        await supabase.from('profiles').upsert({
+          id: userId,
+          name: '',
+          username: '',
+          palette: null,
+          body_profile: null,
+          face_analysis: null,
+          favorite_retailers: [],
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }).then(() => {}, (err) => console.error('Failed to create profile:', err))
       }
 
       if (wishListsRes.data) {
@@ -160,10 +246,25 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         setSavedProducts(savedRes.data.map((s: any) => s.data as Product))
       }
 
-      if (cartRes.data) {
-        setCart(cartRes.data.map((c: any) => ({
-          product: c.product as Product, size: c.size ?? undefined, quantity: c.quantity,
-        })))
+      if (cartRes.data && cartRes.data.length > 0) {
+        // Deduplicate cart items by product ID and size
+        const cartMap = new Map<string, CartItem>()
+        for (const c of cartRes.data) {
+          const key = `${c.product?.id || c.product_id}:${c.size || 'no-size'}`
+          const existing = cartMap.get(key)
+          if (existing) {
+            existing.quantity += c.quantity || 1
+          } else {
+            cartMap.set(key, {
+              product: c.product as Product,
+              size: c.size || undefined,
+              quantity: c.quantity || 1,
+            })
+          }
+        }
+        setCart(Array.from(cartMap.values()))
+      } else {
+        setCart([])
       }
     } finally {
       setDataLoading(false)
@@ -225,30 +326,78 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   // ─── Cart ─────────────────────────────────────────────────────────────────
 
-  const persistCart = useCallback(async (uid: string, items: CartItem[]) => {
-    await supabase.from('cart_items').delete().eq('user_id', uid)
-    if (items.length > 0) {
-      await supabase.from('cart_items').insert(
-        items.map((item) => ({ user_id: uid, product: item.product, size: item.size ?? null, quantity: item.quantity }))
-      )
-    }
+  const cartSaveQueue = useRef<Promise<void>>(Promise.resolve())
+
+  const persistCart = useCallback((uid: string, items: CartItem[]) => {
+    cartSaveQueue.current = cartSaveQueue.current.then(async () => {
+      try {
+        // Delete all existing cart items for this user
+        await supabase.from('cart_items').delete().eq('user_id', uid)
+
+        // Insert new cart items (deduplicated)
+        if (items.length > 0) {
+          // Deduplicate before persisting
+          const cartMap = new Map<string, CartItem>()
+          for (const item of items) {
+            const key = `${item.product.id}:${item.size || 'no-size'}`
+            const existing = cartMap.get(key)
+            if (existing) {
+              existing.quantity += item.quantity
+            } else {
+              cartMap.set(key, { ...item, size: item.size || undefined })
+            }
+          }
+
+          const deduped = Array.from(cartMap.values())
+          await supabase.from('cart_items').insert(
+            deduped.map((item) => ({
+              user_id: uid,
+              product: item.product,
+              size: item.size || null,
+              quantity: item.quantity
+            }))
+          )
+        }
+      } catch (err) {
+        console.error('Failed to persist cart:', err)
+      }
+    })
   }, [])
 
   const addToCart = useCallback((product: Product, size?: string) => {
     setCart((prev) => {
-      const existing = prev.find((i) => i.product.id === product.id && i.size === size)
+      const existing = prev.find((i) => i.product.id === product.id && (i.size || '') === (size || ''))
       const next = existing
-        ? prev.map((i) => i.product.id === product.id && i.size === size ? { ...i, quantity: i.quantity + 1 } : i)
-        : [...prev, { product, size, quantity: 1 }]
+        ? prev.map((i) => i.product.id === product.id && (i.size || '') === (size || '') ? { ...i, quantity: i.quantity + 1 } : i)
+        : [...prev, { product, size: size || undefined, quantity: 1 }]
       const uid = userRef.current?.id
       if (uid) persistCart(uid, next)
       return next
     })
   }, [persistCart])
 
-  const removeFromCart = useCallback((productId: string) => {
+  const removeFromCart = useCallback((productId: string, size?: string) => {
     setCart((prev) => {
-      const next = prev.filter((i) => i.product.id !== productId)
+      const next = prev.filter((i) => !(i.product.id === productId && (i.size || '') === (size || '')))
+      const uid = userRef.current?.id
+      if (uid) persistCart(uid, next)
+      return next
+    })
+  }, [persistCart])
+
+  const updateCartQuantity = useCallback((productId: string, size: string | undefined, quantity: number) => {
+    setCart((prev) => {
+      if (quantity <= 0) {
+        const next = prev.filter((i) => !(i.product.id === productId && (i.size || '') === (size || '')))
+        const uid = userRef.current?.id
+        if (uid) persistCart(uid, next)
+        return next
+      }
+      const next = prev.map((i) => 
+        i.product.id === productId && (i.size || '') === (size || '') 
+          ? { ...i, quantity } 
+          : i
+      )
       const uid = userRef.current?.id
       if (uid) persistCart(uid, next)
       return next
@@ -270,7 +419,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       supabase.from('wish_lists').insert({
         id: list.id, user_id: uid, name: list.name,
         is_public: false, created_at: list.createdAt, updated_at: list.updatedAt,
-      })
+      }).then(() => {}, (err) => console.error('Failed to create wish list:', err))
     }
     return list
   }, [])
@@ -295,6 +444,28 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (uid) {
       supabase.from('wish_list_items').insert({ id: item.id, wish_list_id: wishListId, user_id: uid, data: item, added_at: item.addedAt })
       supabase.from('wish_lists').update({ updated_at: new Date().toISOString() }).eq('id', wishListId)
+    }
+  }, [])
+
+  const addProductToWishList = useCallback((wishListId: string, product: Product, chosenColor: WishListItem['chosenColor']) => {
+    const item: WishListItem = {
+      id: crypto.randomUUID(), addedAt: new Date().toISOString(), productId: product.id,
+      productName: product.name, productBrand: product.brand,
+      productCategory: product.category,
+      productImageUrl: chosenColor?.imageUrl ?? product.imageUrl,
+      productPrice: product.price, storeName: product.retailer,
+      colorScore: chosenColor?.matchScore ?? product.matchScore ?? 50,
+      chosenColor,
+    }
+    setWishLists((prev) =>
+      prev.map((l) => l.id === wishListId ? { ...l, items: [...l.items, item], updatedAt: new Date().toISOString() } : l)
+    )
+    const uid = userRef.current?.id
+    if (uid) {
+      supabase.from('wish_list_items').insert({ id: item.id, wish_list_id: wishListId, user_id: uid, data: item, added_at: item.addedAt })
+        .then(() => {}, (err) => console.error('Failed to add item to wish list:', err))
+      supabase.from('wish_lists').update({ updated_at: new Date().toISOString() }).eq('id', wishListId)
+        .then(() => {}, (err) => console.error('Failed to update wish list:', err))
     }
   }, [])
 
@@ -377,17 +548,30 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }))
   }, [])
 
+  // ─── Notifications ────────────────────────────────────────────────────────
+
+  const markNotificationAsRead = useCallback((notificationId: string) => {
+    setNotifications((prev) =>
+      prev.map((n) => n.id === notificationId ? { ...n, read: true } : n)
+    )
+  }, [])
+
+  const clearNotifications = useCallback(() => {
+    setNotifications([])
+  }, [])
+
   return (
     <AppContext.Provider
       value={{
-        currentPage, userProfile, savedProducts, wishLists, cart, analyses,
+        currentPage, userProfile, savedProducts, wishLists, cart, analyses, notifications,
         selectedProduct, initialized, dataLoading,
         setCurrentPage, setUserProfile, setSelectedProduct,
         saveProduct, unsaveProduct, isProductSaved,
-        addToCart, removeFromCart, cartCount,
-        createWishList, addToWishList, removeFromWishList, deleteWishList,
+        addToCart, removeFromCart, updateCartQuantity, cartCount,
+        createWishList, addToWishList, addProductToWishList, removeFromWishList, deleteWishList,
         toggleWishListVisibility, renameWishList,
         updateRetailers, saveAnalysis, deleteAnalysis, toggleFavoriteAnalysis, saveFaceAnalysis,
+        markNotificationAsRead, clearNotifications,
       }}
     >
       {children}

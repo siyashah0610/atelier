@@ -1,8 +1,9 @@
-import React, { useState } from 'react'
+import React, { useState, useRef } from 'react'
 import { Product } from '../types'
 import { useApp } from '../context/AppContext'
 import { getMatchColor, getMatchLabel } from '../utils/colorUtils'
 import { formatPrice, normalizePrice } from '../utils/priceUtils'
+import ProductWishListPicker from './ProductWishListPicker'
 
 interface Props {
   product: Product
@@ -10,14 +11,17 @@ interface Props {
 }
 
 export default function ProductCard({ product, onClick }: Props) {
-  const { isProductSaved, saveProduct, unsaveProduct } = useApp()
-  const saved = isProductSaved(product.id)
+  const { wishLists } = useApp()
   const [imgError, setImgError] = useState(false)
+  const [showWishListPicker, setShowWishListPicker] = useState(false)
+  const [pickerAdded, setPickerAdded] = useState(false)
+  const heartButtonRef = useRef<HTMLButtonElement>(null)
 
   const score = product.matchScore
   const hasImage = !!(product.imageUrl && !imgError)
   const displayPrice = formatPrice(product.price)
   const displayOriginalPrice = formatPrice(product.originalPrice)
+  const inAnyWishList = wishLists.some(list => list.items.some(item => item.productId === product.id))
 
   // Use all available color options from the product
   const allColorOptions = product.colorOptions || []
@@ -73,23 +77,34 @@ export default function ProductCard({ product, onClick }: Props) {
 
         {/* Action buttons (visible on hover) */}
         <div className="absolute top-2.5 right-2.5 flex flex-col gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-          {/* Save */}
-          <button
-            className="w-7 h-7 rounded-full bg-white/90 backdrop-blur-sm flex items-center justify-center shadow-sm"
-            onClick={(e) => {
-              e.stopPropagation()
-              saved ? unsaveProduct(product.id) : saveProduct(product)
-            }}
-          >
-            <svg
-              className={`w-3.5 h-3.5 ${saved ? 'fill-rose-500 stroke-rose-500' : 'stroke-stone-600 fill-transparent'}`}
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={2}
+          {/* Save to wishlist */}
+          <div className="relative">
+            <button
+              ref={heartButtonRef}
+              className="w-7 h-7 rounded-full bg-white/90 backdrop-blur-sm flex items-center justify-center shadow-sm"
+              onClick={(e) => {
+                e.stopPropagation()
+                setShowWishListPicker(!showWishListPicker)
+              }}
             >
-              <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
-            </svg>
-          </button>
+              <svg
+                className={`w-3.5 h-3.5 ${inAnyWishList || pickerAdded ? 'fill-rose-500 stroke-rose-500' : 'stroke-stone-600 fill-transparent'}`}
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+              </svg>
+            </button>
+            {showWishListPicker && (
+              <ProductWishListPicker
+                product={product}
+                onClose={() => setShowWishListPicker(false)}
+                onAdded={() => setPickerAdded(true)}
+                triggerRef={heartButtonRef}
+              />
+            )}
+          </div>
           {/* Open on retailer site */}
           <a
             href={product.affiliateUrl}
