@@ -4,6 +4,88 @@ import { Product, ProductCategory } from '../types'
 import ProductCard from '../components/ProductCard'
 import ProductModal from '../components/ProductModal'
 
+const BASIC_COLORS = [
+  { name: 'Red', hex: '#DC2626' },
+  { name: 'Orange', hex: '#EA580C' },
+  { name: 'Yellow', hex: '#EAB308' },
+  { name: 'Green', hex: '#16A34A' },
+  { name: 'Teal', hex: '#0D9488' },
+  { name: 'Blue', hex: '#2563EB' },
+  { name: 'Purple', hex: '#7C3AED' },
+  { name: 'Pink', hex: '#DB2777' },
+  { name: 'Magenta', hex: '#C2185B' },
+  { name: 'Brown', hex: '#92400E' },
+  { name: 'Beige', hex: '#D2B48C' },
+  { name: 'Navy', hex: '#001F3F' },
+  { name: 'Burgundy', hex: '#800020' },
+  { name: 'Gray', hex: '#6B7280' },
+  { name: 'Black', hex: '#1F2937' },
+  { name: 'White', hex: '#F5F5F5' },
+]
+
+function useDropdownPosition(isOpen: boolean, buttonRef: React.RefObject<HTMLButtonElement>) {
+  const [position, setPosition] = useState<{ top: number; left: number } | null>(null)
+
+  useEffect(() => {
+    if (!isOpen || !buttonRef.current) {
+      setPosition(null)
+      return
+    }
+
+    const updatePosition = () => {
+      if (!buttonRef.current) return
+      const rect = buttonRef.current.getBoundingClientRect()
+      setPosition({
+        top: rect.bottom,
+        left: rect.left,
+      })
+    }
+
+    updatePosition()
+    const scrollHandler = () => updatePosition()
+    window.addEventListener('scroll', scrollHandler, true)
+    window.addEventListener('resize', updatePosition)
+
+    return () => {
+      window.removeEventListener('scroll', scrollHandler, true)
+      window.removeEventListener('resize', updatePosition)
+    }
+  }, [isOpen, buttonRef])
+
+  return position
+}
+
+function hexToRgb(hex: string): { r: number; g: number; b: number } {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex)
+  return result ? {
+    r: parseInt(result[1], 16),
+    g: parseInt(result[2], 16),
+    b: parseInt(result[3], 16),
+  } : { r: 0, g: 0, b: 0 }
+}
+
+function colorDistance(hex1: string, hex2: string): number {
+  const rgb1 = hexToRgb(hex1)
+  const rgb2 = hexToRgb(hex2)
+  const dr = rgb1.r - rgb2.r
+  const dg = rgb1.g - rgb2.g
+  const db = rgb1.b - rgb2.b
+  return Math.sqrt(dr * dr + dg * dg + db * db)
+}
+
+function getBasicColor(hex: string): string {
+  let closest = BASIC_COLORS[0]
+  let minDistance = Infinity
+  for (const color of BASIC_COLORS) {
+    const dist = colorDistance(hex, color.hex)
+    if (dist < minDistance) {
+      minDistance = dist
+      closest = color
+    }
+  }
+  return closest.name.toLowerCase()
+}
+
 const CATEGORIES: { id: ProductCategory | 'all'; label: string }[] = [
   { id: 'all',      label: 'All'      },
   { id: 'clothing', label: 'Clothing' },
@@ -13,6 +95,8 @@ const CATEGORIES: { id: ProductCategory | 'all'; label: string }[] = [
 ]
 
 const RETAILERS = ['All', 'Aritzia', 'Princess Polly', 'Reformation', 'Edikted', 'Brandy Melville', 'UNIQLO']
+const FILTER_PILL_CLASS = 'px-3 py-1.5 rounded-full border border-stone-200 bg-white text-stone-700 shadow-sm transition-all hover:border-stone-300 hover:bg-stone-50 focus:outline-none focus:ring-2 focus:ring-stone-300/70'
+const DROPDOWN_PANEL_CLASS = 'rounded-2xl border border-stone-200 bg-white shadow-xl ring-1 ring-black/5 overflow-hidden'
 const PAGE_SIZE = 50
 
 export default function FeedPage() {
@@ -23,13 +107,24 @@ export default function FeedPage() {
   const [total, setTotal]           = useState(0)
   const [loadingFirst, setLoadingFirst] = useState(true)
   const [loadingMore, setLoadingMore]   = useState(false)
-  const [category, setCategory]     = useState<ProductCategory | 'all'>('all')
-  const [retailer, setRetailer]     = useState('All')
+  const [categories, setCategories] = useState<(ProductCategory | 'all')[]>(['all'])
+  const [retailers, setRetailers]   = useState<string[]>(['All'])
+  const [colors, setColors]         = useState<string[]>([])
   const [sortBy, setSortBy]         = useState<'match' | 'price-asc' | 'price-desc'>('match')
   const [search, setSearch]         = useState('')
+  const [retailerDropdownOpen, setRetailerDropdownOpen] = useState(false)
+  const [categoryDropdownOpen, setCategoryDropdownOpen] = useState(false)
+  const [colorDropdownOpen, setColorDropdownOpen] = useState(false)
 
   const sentinelRef = useRef<HTMLDivElement>(null)
+  const categoryButtonRef = useRef<HTMLButtonElement>(null)
+  const retailerButtonRef = useRef<HTMLButtonElement>(null)
+  const colorButtonRef = useRef<HTMLButtonElement>(null)
   const palette = userProfile?.palette
+
+  const categoryDropdownPos = useDropdownPosition(categoryDropdownOpen, categoryButtonRef)
+  const retailerDropdownPos = useDropdownPosition(retailerDropdownOpen, retailerButtonRef)
+  const colorDropdownPos = useDropdownPosition(colorDropdownOpen, colorButtonRef)
 
   // Stable fetch function for a given page
   const fetchPage = useCallback(
@@ -39,7 +134,7 @@ export default function FeedPage() {
 
       const params = new URLSearchParams()
       if (palette) params.set('palette', palette.allHexCodes.join(','))
-      if (category !== 'all') params.set('category', category)
+      if (!categories.includes('all') && categories.length === 1) params.set('category', categories[0])
       if (search) params.set('search', search)
       if (sortBy === 'match') params.set('sort', 'match')
       params.set('page', String(pageNum))
@@ -59,7 +154,7 @@ export default function FeedPage() {
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [category, search, palette?.seasonalType]
+    [categories, search, palette?.seasonalType]
   )
 
   // Reload from page 0 when filters change
@@ -86,9 +181,18 @@ export default function FeedPage() {
     return () => observer.disconnect()
   }, [products.length, total, page, loadingFirst, loadingMore, fetchPage])
 
-  // Client-side retailer filter + sort (applied on top of server results)
+  // Client-side category + retailer + color filter + sort (applied on top of server results)
   const visible = (() => {
-    let arr = retailer !== 'All' ? products.filter((p) => p.retailer === retailer) : products
+    let arr = products
+    if (!categories.includes('all')) {
+      arr = arr.filter((p) => categories.includes(p.category as ProductCategory))
+    }
+    if (!retailers.includes('All')) {
+      arr = arr.filter((p) => retailers.includes(p.retailer))
+    }
+    if (colors.length > 0) {
+      arr = arr.filter((p) => p.hexColors.some(hex => colors.includes(getBasicColor(hex))))
+    }
     if (sortBy === 'price-asc')  arr = [...arr].sort((a, b) => a.price - b.price)
     if (sortBy === 'price-desc') arr = [...arr].sort((a, b) => b.price - a.price)
     return arr
@@ -131,40 +235,162 @@ export default function FeedPage() {
             />
           </div>
 
-          {/* Category */}
-          {CATEGORIES.map((c) => (
+          {/* Category Dropdown */}
+          <div className="flex-shrink-0">
             <button
-              key={c.id}
-              onClick={() => setCategory(c.id)}
-              className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors flex-shrink-0 ${
-                category === c.id ? 'bg-stone-900 text-white' : 'bg-white border border-stone-200 text-stone-600 hover:border-stone-400'
-              }`}
+              ref={categoryButtonRef}
+              onClick={() => setCategoryDropdownOpen(!categoryDropdownOpen)}
+              className={`${FILTER_PILL_CLASS} flex items-center gap-1.5 text-xs font-medium whitespace-nowrap ${categoryDropdownOpen ? 'border-stone-300 bg-stone-50' : ''}`}
             >
-              {c.label}
+              {categories.includes('all') ? 'All Categories' : `${categories.length} selected`}
+              <svg className={`w-3 h-3 transition-transform ${categoryDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+              </svg>
             </button>
-          ))}
+
+            {categoryDropdownOpen && categoryDropdownPos && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setCategoryDropdownOpen(false)} />
+                <div
+                  className={`${DROPDOWN_PANEL_CLASS} fixed min-w-40 max-h-60 overflow-y-auto z-50 py-1`}
+                  style={{ top: `${categoryDropdownPos.top}px`, left: `${categoryDropdownPos.left}px` }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {CATEGORIES.map((c) => (
+                    <label
+                      key={c.id}
+                      className="flex items-center gap-2.5 px-4 py-2.5 hover:bg-stone-50 cursor-pointer first:rounded-t-lg last:rounded-b-lg text-xs"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={categories.includes(c.id)}
+                        onChange={(e) => {
+                          if (c.id === 'all') {
+                            setCategories(e.target.checked ? ['all'] : [])
+                          } else {
+                            const newCategories = e.target.checked
+                              ? categories.filter(x => x !== 'all').concat(c.id)
+                              : categories.filter(x => x !== c.id)
+                            setCategories(newCategories.length === 0 ? ['all'] : newCategories)
+                          }
+                        }}
+                        className="w-3.5 h-3.5 rounded border-stone-300 cursor-pointer"
+                      />
+                      <span className="text-stone-700">{c.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
 
           <div className="w-px h-4 bg-stone-200 flex-shrink-0" />
 
-          {/* Retailer */}
-          {RETAILERS.map((r) => (
+          {/* Retailer Dropdown */}
+          <div className="flex-shrink-0">
             <button
-              key={r}
-              onClick={() => setRetailer(r)}
-              className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors flex-shrink-0 ${
-                retailer === r ? 'bg-stone-700 text-white' : 'bg-white border border-stone-200 text-stone-500 hover:border-stone-400'
-              }`}
+              ref={retailerButtonRef}
+              onClick={() => setRetailerDropdownOpen(!retailerDropdownOpen)}
+              className={`${FILTER_PILL_CLASS} flex items-center gap-1.5 text-xs font-medium whitespace-nowrap ${retailerDropdownOpen ? 'border-stone-300 bg-stone-50' : ''}`}
             >
-              {r}
+              {retailers.includes('All') ? 'All Retailers' : `${retailers.length} selected`}
+              <svg className={`w-3 h-3 transition-transform ${retailerDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+              </svg>
             </button>
-          ))}
+
+            {retailerDropdownOpen && retailerDropdownPos && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setRetailerDropdownOpen(false)} />
+                <div
+                  className={`${DROPDOWN_PANEL_CLASS} fixed min-w-40 max-h-60 overflow-y-auto z-50 py-1`}
+                  style={{ top: `${retailerDropdownPos.top}px`, left: `${retailerDropdownPos.left}px` }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {RETAILERS.map((r) => (
+                    <label
+                      key={r}
+                      className="flex items-center gap-2.5 px-4 py-2.5 hover:bg-stone-50 cursor-pointer first:rounded-t-lg last:rounded-b-lg text-xs"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={retailers.includes(r)}
+                        onChange={(e) => {
+                          if (r === 'All') {
+                            setRetailers(e.target.checked ? ['All'] : [])
+                          } else {
+                            const newRetailers = e.target.checked
+                              ? retailers.filter(x => x !== 'All').concat(r)
+                              : retailers.filter(x => x !== r)
+                            setRetailers(newRetailers.length === 0 ? ['All'] : newRetailers)
+                          }
+                        }}
+                        className="w-3.5 h-3.5 rounded border-stone-300 cursor-pointer"
+                      />
+                      <span className="text-stone-700">{r}</span>
+                    </label>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Color Dropdown */}
+          <div className="flex-shrink-0">
+            <button
+              ref={colorButtonRef}
+              onClick={() => setColorDropdownOpen(!colorDropdownOpen)}
+              className={`${FILTER_PILL_CLASS} flex items-center gap-1.5 text-xs font-medium whitespace-nowrap ${colorDropdownOpen ? 'border-stone-300 bg-stone-50' : ''}`}
+            >
+              {colors.length === 0 ? 'All Colors' : `${colors.length} selected`}
+              <svg className={`w-3 h-3 transition-transform ${colorDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+              </svg>
+            </button>
+
+            {colorDropdownOpen && colorDropdownPos && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setColorDropdownOpen(false)} />
+                <div
+                  className={`${DROPDOWN_PANEL_CLASS} fixed min-w-48 max-h-60 overflow-y-auto z-50 py-1`}
+                  style={{ top: `${colorDropdownPos.top}px`, left: `${colorDropdownPos.left}px` }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {BASIC_COLORS.map((color) => (
+                    <label
+                      key={color.name}
+                      className="flex items-center gap-3 px-4 py-3 hover:bg-stone-50 cursor-pointer first:rounded-t-lg last:rounded-b-lg text-xs"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={colors.includes(color.name.toLowerCase())}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setColors([...colors, color.name.toLowerCase()])
+                          } else {
+                            setColors(colors.filter(c => c !== color.name.toLowerCase()))
+                          }
+                        }}
+                        className="w-3.5 h-3.5 rounded border-stone-300 cursor-pointer"
+                      />
+                      <div
+                        className="w-4 h-4 rounded-full border border-stone-300"
+                        style={{ backgroundColor: color.hex }}
+                      />
+                      <span className="text-stone-700 flex-1">{color.name}</span>
+                    </label>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
 
           {/* Sort */}
           <div className="flex-shrink-0 ml-auto">
             <select
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
-              className="px-3 py-1.5 text-xs border border-stone-200 rounded-full bg-white text-stone-600 focus:outline-none cursor-pointer"
+              className="px-3 py-1.5 text-xs border border-stone-200 rounded-full bg-white text-stone-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-stone-300/70 cursor-pointer"
             >
               <option value="match">Best Match</option>
               <option value="price-asc">Price ↑</option>
@@ -203,7 +429,7 @@ export default function FeedPage() {
             {total > 0 && (
               <p className="text-xs text-stone-400 mb-4">
                 Showing {visible.length.toLocaleString()} of {total.toLocaleString()} palette-matched items
-                {retailer !== 'All' && ` · ${retailer}`}
+                {!retailers.includes('All') && ` · ${retailers.join(', ')}`}
               </p>
             )}
 
