@@ -1232,6 +1232,41 @@ function buildResult(paletteHexes: string[], catFilter: string, searchQ: string)
   }).filter((p) => !!p.imageUrl)
 }
 
+// ── Color Interleaving for Variety ────────────────────────────────────────────
+
+function interleavedByColor(products: Product[]): Product[] {
+  if (products.length === 0) return products
+
+  // Group by primary color
+  const byColor = new Map<string, Product[]>()
+  for (const p of products) {
+    const color = p.hexColors[0] || '#808080'
+    if (!byColor.has(color)) byColor.set(color, [])
+    byColor.get(color)!.push(p)
+  }
+
+  // Interleave from different color groups
+  const result: Product[] = []
+  const colorGroups = Array.from(byColor.entries())
+  let rotationIdx = 0
+
+  while (result.length < products.length) {
+    let addedInRound = false
+    for (let i = 0; i < colorGroups.length; i++) {
+      const idx = (rotationIdx + i) % colorGroups.length
+      const [, group] = colorGroups[idx]
+      if (group.length > 0) {
+        result.push(group.shift()!)
+        addedInRound = true
+      }
+    }
+    rotationIdx = (rotationIdx + 1) % colorGroups.length
+    if (!addedInRound) break
+  }
+
+  return result
+}
+
 // ── Route ─────────────────────────────────────────────────────────────────────
 
 const router = Router()
@@ -1247,23 +1282,31 @@ router.get('/status', (_req: Request, res: Response) => {
 })
 
 router.get('/', async (req: Request, res: Response) => {
-  const { palette, category, search, page, limit } = req.query
+  const { palette, category, search, page, limit, sort } = req.query
 
   const paletteHexes: string[] = palette
     ? String(palette).split(',').map((h) => h.trim()).filter(Boolean)
     : []
   const catFilter = String(category ?? 'all')
   const searchQ = String(search ?? '')
+  const sortBy = String(sort ?? 'match')
   const pageNum = Math.max(0, parseInt(String(page ?? '0'), 10) || 0)
   const pageSize = Math.min(100, Math.max(10, parseInt(String(limit ?? '50'), 10) || 50))
 
-  const cacheKey = `${paletteHexes.join(',')}|${catFilter}|${searchQ}`
+  const cacheKey = `${paletteHexes.join(',')}|${catFilter}|${searchQ}|${sortBy}`
   let products = getCachedResult(cacheKey)
   if (!products) {
     if ((!_allGroups || _allGroups.length === 0) && !_refreshing) {
       await triggerLiveRefresh()
     }
-    products = buildResult(paletteHexes, catFilter, searchQ)
+    let result = buildResult(paletteHexes, catFilter, searchQ)
+
+    // Apply server-side sorting with color variety for best match
+    if (sortBy === 'match' && paletteHexes.length > 0) {
+      result = interleavedByColor(result)
+    }
+
+    products = result
     resultCache.set(cacheKey, { products, ts: Date.now() })
   }
 

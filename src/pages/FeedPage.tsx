@@ -41,6 +41,7 @@ export default function FeedPage() {
       if (palette) params.set('palette', palette.allHexCodes.join(','))
       if (category !== 'all') params.set('category', category)
       if (search) params.set('search', search)
+      if (sortBy === 'match') params.set('sort', 'match')
       params.set('page', String(pageNum))
       params.set('limit', String(PAGE_SIZE))
 
