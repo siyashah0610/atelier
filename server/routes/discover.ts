@@ -115,7 +115,7 @@ async function fetchWithCurl(url: string, headers?: Record<string, string>): Pro
   try {
     // Use a temporary file to avoid shell escaping issues
     const tmpFile = `/tmp/curl_${Math.random().toString(36).slice(2, 9)}.json`
-    let cmd = `curl -s -o ${tmpFile} `
+    let cmd = `curl -s --compressed -o ${tmpFile} `
 
     // Add headers
     cmd += `-H 'User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36' `
