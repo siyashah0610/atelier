@@ -134,10 +134,21 @@ async function fetchWithCurl(url: string, headers?: Record<string, string>): Pro
 
     execSync(cmd, {
       encoding: 'utf8',
-      timeout: 30000,
+      timeout: 60000,
       shell: '/bin/bash',
       stdio: 'pipe'
     })
+
+    // Wait a bit for file to be fully written
+    const start = Date.now()
+    while (!require('fs').existsSync(tmpFile) && Date.now() - start < 5000) {
+      require('child_process').execSync('sleep 0.01')
+    }
+
+    if (!require('fs').existsSync(tmpFile)) {
+      console.error(`[curl-fail] File not created: ${tmpFile}`)
+      return null
+    }
 
     // Read the file
     const result = readSync(tmpFile, 'utf8')
@@ -147,7 +158,10 @@ async function fetchWithCurl(url: string, headers?: Record<string, string>): Pro
     return JSON.parse(result)
   } catch (e) {
     const msg = (e as Error).message
-    console.error(`[curl-fail] ${url.substring(0, 60)}: ${msg.substring(0, 100)}`)
+    const stack = (e as Error).stack
+    console.error(`[curl-fail] ${url.substring(0, 60)}`)
+    console.error(`  Error: ${msg.substring(0, 200)}`)
+    if (stack) console.error(`  Stack: ${stack.substring(0, 200)}`)
     return null
   }
 }
