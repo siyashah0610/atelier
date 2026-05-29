@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express'
-import { readFileSync } from 'fs'
+import { readFileSync, readFileSync as readSync, unlinkSync } from 'fs'
 import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
 import { execSync } from 'child_process'
@@ -140,9 +140,8 @@ async function fetchWithCurl(url: string, headers?: Record<string, string>): Pro
     })
 
     // Read the file
-    const fs = require('fs')
-    const result = fs.readFileSync(tmpFile, 'utf8')
-    fs.unlinkSync(tmpFile)
+    const result = readSync(tmpFile, 'utf8')
+    unlinkSync(tmpFile)
 
     if (!result || !result.trim()) return null
     return JSON.parse(result)
