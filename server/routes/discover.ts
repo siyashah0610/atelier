@@ -114,8 +114,8 @@ function mapCategory(raw: string | undefined): ProductCategory {
 async function fetchWithCurl(url: string, headers?: Record<string, string>): Promise<any> {
   try {
     // Use a temporary file to avoid shell escaping issues
-    const tmpFile = `/tmp/curl_${Date.now()}_${Math.random().toString(36).slice(2)}.json`
-    let cmd = `curl -s -o '${tmpFile}' `
+    const tmpFile = `/tmp/curl_${Math.random().toString(36).slice(2, 9)}.json`
+    let cmd = `curl -s -o ${tmpFile} `
 
     // Add headers
     cmd += `-H 'User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36' `
@@ -146,6 +146,8 @@ async function fetchWithCurl(url: string, headers?: Record<string, string>): Pro
     if (!result || !result.trim()) return null
     return JSON.parse(result)
   } catch (e) {
+    const msg = (e as Error).message
+    console.error(`[curl-fail] ${url.substring(0, 60)}: ${msg.substring(0, 100)}`)
     return null
   }
 }
