@@ -31,7 +31,7 @@ const FEATURES = [
     icon: '◉',
     title: 'Unified Cart',
     description:
-      'Shop Revolve, Aritzia, Sephora — all in one place. One review of your cart, then check out per retailer.',
+      'Shop from 8+ retailers in one place. Get your color analysis, then browse palette-matched items across all your favorite stores.',
   },
 ]
 

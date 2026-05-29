@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express'
 import { readFileSync } from 'fs'
 import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
+import https from 'https'
 import { Product, ProductCategory, ColorOption } from '../../src/types/index.js'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -108,6 +109,41 @@ function mapCategory(raw: string | undefined): ProductCategory {
   if (/jewelry|jewellery|necklace|earring|bracelet|ring|pendant/.test(s)) return 'jewelry'
   if (/makeup|beauty|cosmetic|lipstick|mascara/.test(s)) return 'makeup'
   return 'clothing'
+}
+
+async function fetchWithHttps(url: string, headers?: Record<string, string>): Promise<any> {
+  return new Promise((resolve) => {
+    const allHeaders = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+      'Accept': 'application/json, text/plain, */*',
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Accept-Encoding': 'identity',
+      'Connection': 'keep-alive',
+      ...headers
+    }
+
+    const req = https.get(url, { headers: allHeaders, timeout: 30000 }, (res) => {
+      let data = ''
+      res.on('data', (chunk) => { data += chunk })
+      res.on('end', () => {
+        try {
+          if (data && data.startsWith('{')) {
+            resolve(JSON.parse(data))
+          } else {
+            resolve(null)
+          }
+        } catch {
+          resolve(null)
+        }
+      })
+    })
+
+    req.on('error', () => resolve(null))
+    req.on('timeout', () => {
+      req.destroy()
+      resolve(null)
+    })
+  })
 }
 
 // ── Shared ProductGroup type ──────────────────────────────────────────────────
@@ -228,7 +264,7 @@ function aritziaProductImageUrl(swatchUrlOrPublicId: string | undefined): string
 function normalizePrice(value: unknown): number {
   if (typeof value === 'number' && Number.isFinite(value)) return value
   if (typeof value === 'string') {
-    const n = Number(value)
+    const n = Number(value.replace(/[^0-9.-]/g, ''))
     return Number.isFinite(n) ? n : 0
   }
   if (value && typeof value === 'object') {
@@ -239,82 +275,95 @@ function normalizePrice(value: unknown): number {
   return 0
 }
 function loadAritziaStatic(): ProductGroup[] {
-  const raw = JSON.parse(readFileSync(join(PRODUCTS_DIR, 'aritzia_us_product_catalog.json'), 'utf-8'))
-  return (raw.products as any[]).map((p) => ({
-    id: `aritzia-${p.masterId}`,
-    name: p.name,
-    brand: 'Aritzia',
-    retailer: 'Aritzia',
-    price: normalizePrice(p.priceRange?.min),
-    originalPrice: p.onSale ? normalizePrice(p.priceRange?.max) : undefined,
-    category: mapCategory(p.subCategory || p.category),
-    primaryImageUrl: aritziaProductImageUrl(p.colorVariants?.[0]?.swatchImageUrl),
-    allColorOptions: (p.colorVariants ?? []).map((cv: any) => ({
-      name: cv.colorName ?? '',
-      hex: colorNameToHex(cv.colorFamily || cv.colorName),
-      url: cv.url,
-      imageUrl: aritziaProductImageUrl(cv.swatchImageUrl),
-    })),
-    sizes: p.availableSizes ?? [],
-    rating: p.rating ?? 4.2,
-    reviewCount: p.reviewCount ?? 50,
-    tags: [p.subCategory, ...(Array.isArray(p.fabric) ? p.fabric : [p.fabric])].filter((t): t is string => typeof t === 'string' && !!t),
-  }))
+  try {
+    const raw = JSON.parse(readFileSync(join(PRODUCTS_DIR, 'aritzia_us_product_catalog.json'), 'utf-8'))
+    return (raw.products as any[]).map((p) => ({
+      id: `aritzia-${p.masterId}`,
+      name: p.name,
+      brand: 'Aritzia',
+      retailer: 'Aritzia',
+      price: normalizePrice(p.priceRange?.min),
+      originalPrice: p.onSale ? normalizePrice(p.priceRange?.max) : undefined,
+      category: mapCategory(p.subCategory || p.category),
+      primaryImageUrl: aritziaProductImageUrl(p.colorVariants?.[0]?.swatchImageUrl),
+      allColorOptions: (p.colorVariants ?? []).map((cv: any) => ({
+        name: cv.colorName ?? '',
+        hex: colorNameToHex(cv.colorFamily || cv.colorName),
+        url: cv.url,
+        imageUrl: aritziaProductImageUrl(cv.swatchImageUrl),
+      })),
+      sizes: p.availableSizes ?? [],
+      rating: p.rating ?? 4.2,
+      reviewCount: p.reviewCount ?? 50,
+      tags: [p.subCategory, ...(Array.isArray(p.fabric) ? p.fabric : [p.fabric])].filter((t): t is string => typeof t === 'string' && !!t),
+    }))
+  } catch {
+    return []
+  }
 }
 
 function loadPPStatic(): ProductGroup[] {
-  const raw = JSON.parse(readFileSync(join(PRODUCTS_DIR, 'princess_polly_all_products.json'), 'utf-8')) as any[]
-  return raw.map((p) => {
-    const colors: string[] = p.colors ?? []
-    const image = (p.images as string[] | undefined)?.[0] ?? ''
-    const price = typeof p.price_min === 'number' ? p.price_min : parseFloat(String(p.price_min ?? 0))
-    const productUrl = p.product_url as string
-    return {
-      id: `pp-${p.product_id}`,
-      name: p.name,
-      brand: 'Princess Polly',
-      retailer: 'Princess Polly',
-      price,
-      category: mapCategory(p.product_type),
-      primaryImageUrl: image,
-      allColorOptions: colors.length
-        ? colors.map((c) => ({ name: c, hex: colorNameToHex(c), url: productUrl, imageUrl: image }))
-        : [{ name: '', hex: colorNameToHex(p.name), url: productUrl, imageUrl: image }],
-      sizes: p.sizes ?? [],
-      rating: 4.3,
-      reviewCount: 120,
-      tags: (p.tags as string[] | undefined)?.slice(0, 8) ?? [],
-    }
-  })
+  try {
+    const raw = JSON.parse(readFileSync(join(PRODUCTS_DIR, 'princess_polly_all_products.json'), 'utf-8')) as any[]
+    return raw.map((p) => {
+      const colors: string[] = p.colors ?? []
+      const image = (p.images as string[] | undefined)?.[0] ?? ''
+      const price = typeof p.price_min === 'number' ? p.price_min : parseFloat(String(p.price_min ?? 0))
+      const productUrl = p.product_url as string
+      return {
+        id: `pp-${p.product_id}`,
+        name: p.name,
+        brand: 'Princess Polly',
+        retailer: 'Princess Polly',
+        price,
+        category: mapCategory(p.product_type),
+        primaryImageUrl: image,
+        allColorOptions: colors.length
+          ? colors.map((c) => ({ name: c, hex: colorNameToHex(c), url: productUrl, imageUrl: image }))
+          : [{ name: '', hex: colorNameToHex(p.name), url: productUrl, imageUrl: image }],
+        sizes: p.sizes ?? [],
+        rating: 4.3,
+        reviewCount: 120,
+        tags: (p.tags as string[] | undefined)?.slice(0, 8) ?? [],
+      }
+    })
+  } catch {
+    return []
+  }
 }
 
 function loadReformationStatic(): ProductGroup[] {
-  const raw = JSON.parse(readFileSync(join(PRODUCTS_DIR, 'reformation_products (1).json'), 'utf-8'))
-  return (raw.products as any[]).map((p) => ({
-    id: `ref-${p.base_product_id}`,
-    name: p.title,
-    brand: 'Reformation',
-    retailer: 'Reformation',
-    price: parseFloat(String(p.price ?? '0').replace(/[^0-9.]/g, '')) || 0,
-    category: mapCategory(p.category),
-    primaryImageUrl: '',
-    allColorOptions: (p.available_colors ?? []).map((cv: any) => ({
-      name: cv.color_name as string,
-      hex: colorNameToHex(cv.color_name),
-      url: cv.url as string,
-      imageUrl: '',
-    })),
-    sizes: [],
-    rating: 4.4,
-    reviewCount: 80,
-    tags: [p.category].filter(Boolean) as string[],
-  }))
+  try {
+    const raw = JSON.parse(readFileSync(join(PRODUCTS_DIR, 'reformation_products (1).json'), 'utf-8'))
+    return (raw.products as any[]).map((p) => ({
+      id: `ref-${p.base_product_id}`,
+      name: p.title,
+      brand: 'Reformation',
+      retailer: 'Reformation',
+      price: parseFloat(String(p.price ?? '0').replace(/[^0-9.]/g, '')) || 0,
+      category: mapCategory(p.category),
+      primaryImageUrl: '',
+      allColorOptions: (p.available_colors ?? []).map((cv: any) => ({
+        name: cv.color_name as string,
+        hex: colorNameToHex(cv.color_name),
+        url: cv.url as string,
+        imageUrl: '',
+      })),
+      sizes: [],
+      rating: 4.4,
+      reviewCount: 80,
+      tags: [p.category].filter(Boolean) as string[],
+    }))
+  } catch {
+    return []
+  }
 }
 
 // ── Live API fetchers (run in background) ─────────────────────────────────────
 
 const SLEEP = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 
+// Helper: Fetch all colors for a Shopify product
 async function fetchAritziaAlgolia(): Promise<ProductGroup[]> {
   const APP_ID = 'SONLJM8OH6'
   const API_KEY = '1455bca7c6c33e746a0f38beb28422e6'
@@ -355,7 +404,7 @@ async function fetchAritziaAlgolia(): Promise<ProductGroup[]> {
 
   const firstData = await fetchWithFallback(0, 1)
   const nbHits: number = firstData?.results?.[0]?.nbHits ?? 0
-  const nbPages = Math.min(50, Math.ceil(nbHits / HIT_SIZE))
+  const nbPages = Math.min(80, Math.ceil(nbHits / HIT_SIZE))
 
   const allHits: any[] = []
   for (let p = 0; p < nbPages; p++) {
@@ -385,8 +434,10 @@ async function fetchAritziaAlgolia(): Promise<ProductGroup[]> {
   const groups: ProductGroup[] = []
   for (const [masterId, hits] of byMaster) {
     const p = hits[0]
-    // Each Algolia hit is a single color variant. Embedded colorVariants is rare; prefer per-hit data.
-    const variants = (p.colorVariants?.length ? p.colorVariants : hits).map((h: any) => {
+
+    // Collect all color variants from the grouped hits
+    // In Algolia, each hit for the same masterId is typically a different color variant
+    const variants = hits.map((h: any) => {
       const colorName = h.trueColor ?? h.colorName ?? ''
       const colorFamily = h.refinementColor ?? h.colorFamily ?? ''
       const colorId = h.color ?? h.colorId ?? ''
@@ -400,7 +451,7 @@ async function fetchAritziaAlgolia(): Promise<ProductGroup[]> {
         imageUrl: buildAritziaUrl(defaultImage) || aritziaProductImageUrl(h.swatchImageUrl),
         sizes: h.shippableSizes ?? h.availableSizes ?? h.sizeRun ?? [],
       }
-    })
+    }).filter((v: any) => v.colorName) // Filter out variants without color names
 
     const priceRange = p.price ?? p.priceRange ?? {}
     groups.push({
@@ -425,6 +476,17 @@ async function fetchAritziaAlgolia(): Promise<ProductGroup[]> {
     })
   }
   return groups
+}
+
+function decodeHtmlEntities(value: string): string {
+  return value
+    .replace(/&amp;/gi, '&')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
 async function fetchReformationLiveProducts(): Promise<ProductGroup[]> {
@@ -473,8 +535,16 @@ async function fetchReformationLiveProducts(): Promise<ProductGroup[]> {
         // fall back to the tile text if aggregate parsing fails
       }
 
-      const colorName = altText.split(' - ').pop()?.trim() || name
       seen.add(pid)
+
+      // Extract color from product title/alt text (product page fetching too slow for now)
+      const colorName = altText.split(' - ').pop()?.trim() || name
+      const allColors = [{
+        name: colorName,
+        hex: colorNameToHex(colorName),
+        url: href,
+        imageUrl,
+      }]
 
       groups.push({
         id: `ref-${pid}`,
@@ -484,12 +554,7 @@ async function fetchReformationLiveProducts(): Promise<ProductGroup[]> {
         price: normalizePrice(price),
         category: mapCategory(category),
         primaryImageUrl: imageUrl,
-        allColorOptions: [{
-          name: colorName,
-          hex: colorNameToHex(colorName),
-          url: href,
-          imageUrl,
-        }],
+        allColorOptions: allColors,
         sizes: [],
         rating: 4.4,
         reviewCount: 80,
@@ -514,26 +579,30 @@ async function fetchShopifyAll(
   const seen = new Set<string>()
   let page = 1
 
-  while (page <= 100) {
+  while (page <= 30) {
     const collectionUrl = `${storeUrl}/collections/all/products.json?limit=250&page=${page}`
-    const res = await fetch(collectionUrl, {
-      headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' },
-    })
-    if (!res.ok) break
-    const data = await res.json() as any
-    const products: any[] = data.products ?? []
-    if (!products.length) break
+    const headers = {
+      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+      'Accept': 'application/json',
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Accept-Encoding': 'gzip, deflate, br',
+      'Referer': `${storeUrl}/collections/all`,
+      'Cache-Control': 'no-cache',
+    }
+    try {
+      const data = await fetchWithHttps(collectionUrl, headers)
+      if (!data) {
+        if (page === 1) return []
+        break
+      }
+      const products: any[] = data.products ?? []
+      if (!products.length) break
 
     for (const p of products) {
       const id = `${brand.toLowerCase().replace(/\s+/g, '-')}-${p.id}`
       if (seen.has(id)) continue
       seen.add(id)
 
-      const opts: any[] = p.options ?? []
-      const colourOpt = opts.find((o) => /colou?r/i.test(o.name ?? ''))
-      const sizeOpt = opts.find((o) => /size/i.test(o.name ?? ''))
-      const colors: string[] = colourOpt?.values ?? []
-      const sizes: string[] = sizeOpt?.values ?? []
       const images: string[] = (p.images as any[] | undefined)?.map((img: any) => img.src) ?? []
       const primaryImage = images[0] ?? ''
       const variants: any[] = p.variants ?? []
@@ -541,6 +610,51 @@ async function fetchShopifyAll(
         ? Math.min(...variants.map((v: any) => normalizePrice(v.price)))
         : 0
       const productUrl = `${storeUrl}/products/${p.handle}`
+
+      // Identify which option index corresponds to color
+      // Check product options to find which one is likely "color"
+      const productOpts: any[] = p.options ?? []
+      const colorOptIndex = productOpts.findIndex((o: any) => /color|colour/i.test(o.name ?? ''))
+      const sizeOptIndex = productOpts.findIndex((o: any) => /size/i.test(o.name ?? ''))
+
+      // Fetch all color variants from the product
+      let allColors: { name: string; hex: string; url: string; imageUrl: string }[] = []
+      if (variants.length > 0) {
+        // Extract unique colors from variants
+        const colorMap = new Map<string, { name: string; hex: string; url: string; imageUrl: string }>()
+        for (const variant of variants) {
+          let colorName = 'Default'
+
+          // Try to extract color from the correct option index
+          if (colorOptIndex >= 0) {
+            // Use the identified color option
+            colorName = [variant.option1, variant.option2, variant.option3][colorOptIndex] || 'Default'
+          } else {
+            // Fallback: use the option that's not size
+            if (sizeOptIndex !== 0 && variant.option1 && !/^[a-z]{1,3}$/i.test(variant.option1.toLowerCase())) colorName = variant.option1
+            else if (sizeOptIndex !== 1 && variant.option2) colorName = variant.option2
+            else if (sizeOptIndex !== 2 && variant.option3) colorName = variant.option3
+          }
+
+          if (colorName && colorName !== 'Default' && !colorMap.has(colorName)) {
+            colorMap.set(colorName, {
+              name: colorName,
+              hex: colorNameToHex(colorName),
+              url: `${productUrl}?variant=${variant.id}`,
+              imageUrl: variant.featured_image?.src || primaryImage,
+            })
+          }
+        }
+        allColors = Array.from(colorMap.values())
+      }
+
+      if (allColors.length === 0) {
+        allColors = [{ name: 'Default', hex: colorNameToHex(p.title), url: productUrl, imageUrl: primaryImage }]
+      }
+
+      const opts: any[] = p.options ?? []
+      const sizeOpt = opts.find((o) => /size/i.test(o.name ?? ''))
+      const sizes: string[] = sizeOpt?.values ?? []
 
       groups.push({
         id,
@@ -550,20 +664,253 @@ async function fetchShopifyAll(
         price,
         category: mapCategory(p.product_type),
         primaryImageUrl: primaryImage,
-        allColorOptions: colors.length
-          ? colors.map((c) => ({ name: c, hex: colorNameToHex(c), url: productUrl, imageUrl: primaryImage }))
-          : [{ name: '', hex: colorNameToHex(p.title), url: productUrl, imageUrl: primaryImage }],
+        allColorOptions: allColors,
         sizes,
         rating: ratingDefault,
         reviewCount: 100,
-        tags: (p.tags as string[] | undefined)?.slice(0, 8) ?? [],
+        tags: [retailer, ...((p.tags as string[] | undefined)?.slice(0, 7) ?? [])],
       })
     }
 
     if (products.length < 250) break
     page++
     await SLEEP(150)
+    } catch {
+      if (page === 1) return []
+      break
+    }
   }
+  return groups
+}
+
+async function fetchBrandyMelville(): Promise<ProductGroup[]> {
+  const groups: ProductGroup[] = []
+  const seen = new Set<string>()
+  let page = 1
+
+  while (page <= 15) {
+    const url = `https://us.brandymelville.com/products.json?limit=250&page=${page}`
+    const headers = {
+      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+      'Accept': 'application/json',
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Accept-Encoding': 'gzip, deflate, br',
+      'Referer': 'https://us.brandymelville.com/',
+      'Sec-Fetch-Dest': 'empty',
+      'Sec-Fetch-Mode': 'cors',
+      'Sec-Fetch-Site': 'same-origin',
+    }
+    const data = await fetchWithHttps(url, headers)
+    if (!data) {
+      console.warn(`[discover-bm] Page ${page}: fetch failed`)
+      break
+    }
+    const products: any[] = data.products ?? []
+    if (!products.length) break
+
+    for (const p of products) {
+        const id = `bm-${p.id}`
+        if (seen.has(id)) continue
+        seen.add(id)
+
+        const images: string[] = (p.images as any[] | undefined)?.map((img: any) => img.src) ?? []
+        const primaryImage = images[0] ?? ''
+        if (!primaryImage) continue
+
+        const variants: any[] = p.variants ?? []
+        const price = variants.length
+          ? Math.min(...variants.map((v: any) => normalizePrice(v.price)))
+          : 0
+        const productUrl = `https://us.brandymelville.com/products/${p.handle}`
+
+        const allColors = (p.options ?? [])
+          .find((o: any) => /color/i.test(o.name ?? ''))
+          ?.values?.slice(0, 5)
+          .map((colorName: string) => ({
+            name: colorName,
+            hex: colorNameToHex(colorName),
+            url: productUrl,
+            imageUrl: primaryImage,
+          })) || [{ name: 'Default', hex: colorNameToHex(p.title), url: productUrl, imageUrl: primaryImage }]
+
+        groups.push({
+          id,
+          name: p.title,
+          brand: 'Brandy Melville',
+          retailer: 'Brandy Melville',
+          price,
+          category: mapCategory(p.product_type),
+          primaryImageUrl: primaryImage,
+          allColorOptions: allColors,
+          sizes: [],
+          rating: 4.2,
+          reviewCount: 100,
+          tags: ['Brandy Melville'],
+        })
+      }
+
+    if (products.length < 250) break
+    page++
+    await SLEEP(200)
+  }
+
+  return groups
+}
+
+async function fetchUNIQLO(): Promise<ProductGroup[]> {
+  const groups: ProductGroup[] = []
+  const seen = new Set<string>()
+  let offset = 0
+  const limit = 36
+
+  while (offset < 500) {
+    try {
+      const url = new URL('https://www.uniqlo.com/us/api/commerce/v5/en/products')
+      url.searchParams.set('path', '22210,23295')
+      url.searchParams.set('sort', '1')
+      url.searchParams.set('genderId', '22210')
+      url.searchParams.set('offset', String(offset))
+      url.searchParams.set('limit', String(limit))
+      url.searchParams.set('imageRatio', '3x4')
+      url.searchParams.set('rankingGender', 'women')
+      url.searchParams.set('rankingClassId', '23295')
+      url.searchParams.set('httpFailure', 'true')
+
+      const res = await fetch(url.toString(), {
+        headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36' },
+        signal: AbortSignal.timeout(30000),
+      })
+      if (!res.ok) break
+
+      const data = await res.json() as any
+      const products: any[] = data?.result?.items ?? []
+      if (!products.length) break
+
+      for (const p of products) {
+        const id = `uniqlo-${p.l1Id}`
+        if (seen.has(id)) continue
+        seen.add(id)
+
+        const price = normalizePrice(p.prices?.base?.value ?? 0)
+        // Get the first available color code from images.main
+        const availableColorCode = p.representativeColorDisplayCode ||
+          Object.keys(p.images?.main || {})?.[0] ||
+          p.colors?.[0]?.displayCode || '00'
+        const imageUrl = p.images?.main?.[availableColorCode]?.image || ''
+
+        groups.push({
+          id,
+          name: p.name || '',
+          brand: 'UNIQLO',
+          retailer: 'UNIQLO',
+          price,
+          category: mapCategory(p.genderName || 'clothing'),
+          primaryImageUrl: imageUrl || 'https://via.placeholder.com/400x560?text=UNIQLO',
+          allColorOptions: (p.colors ?? []).slice(0, 5).map((c: any) => ({
+            name: c.name,
+            hex: colorNameToHex(c.name),
+            url: `https://www.uniqlo.com/us/en/products/${p.l1Id}`,
+            imageUrl: p.images?.main?.[c.displayCode]?.image || imageUrl || 'https://via.placeholder.com/400x560?text=UNIQLO',
+          })),
+          sizes: (p.sizes ?? []).slice(0, 8).map((s: any) => s.name),
+          rating: 4.1,
+          reviewCount: 80,
+          tags: ['UNIQLO'],
+        })
+      }
+
+      if (products.length < limit) break
+      offset += limit
+      await SLEEP(200)
+    } catch (error) {
+      console.error(`[discover-uniqlo] Offset ${offset} fetch failed:`, error)
+      break
+    }
+  }
+
+  return groups
+}
+
+async function fetchAbercrombieAndFitch(): Promise<ProductGroup[]> {
+  const groups: ProductGroup[] = []
+  const seen = new Set<string>()
+  let page = 0
+
+  while (page < 10) {
+    try {
+      const url = `https://www.abercrombie.com/shop/us/womenswear?offset=${page * 48}`
+      const res = await fetch(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.9',
+          'Accept-Encoding': 'gzip, deflate, br',
+          'Referer': 'https://www.abercrombie.com/shop/us/womenswear',
+        },
+        signal: AbortSignal.timeout(30000),
+      })
+      if (!res.ok) break
+
+      const html = await res.text()
+
+      // Extract product data from JSON-LD schema
+      const schemaMatch = html.match(/<script type="application\/ld\+json">([^<]+)<\/script>/g) || []
+      if (!schemaMatch.length) break
+
+      for (const schema of schemaMatch) {
+        try {
+          const jsonMatch = schema.match(/>([^<]+)</)
+          if (!jsonMatch) continue
+          const data = JSON.parse(jsonMatch[1])
+          if (data['@type'] === 'Product') {
+            const id = `anf-${data.sku || data.url?.split('/').pop()}`
+            if (seen.has(id)) continue
+            seen.add(id)
+
+            const price = typeof data.offers?.price === 'string'
+              ? parseFloat(data.offers.price)
+              : data.offers?.price ?? 0
+
+            const imageUrl = Array.isArray(data.image)
+              ? data.image[0]
+              : data.image || ''
+
+            if (!imageUrl) continue
+
+            groups.push({
+              id,
+              name: data.name || '',
+              brand: 'Abercrombie & Fitch',
+              retailer: 'Abercrombie & Fitch',
+              price: normalizePrice(price),
+              category: 'clothing',
+              primaryImageUrl: imageUrl,
+              allColorOptions: [{
+                name: 'Default',
+                hex: colorNameToHex(data.name),
+                url: data.url || `https://www.abercrombie.com/shop/us/womens-clothing`,
+                imageUrl,
+              }],
+              sizes: [],
+              rating: data.aggregateRating?.ratingValue ?? 4.0,
+              reviewCount: data.aggregateRating?.reviewCount ?? 0,
+              tags: [],
+            })
+          }
+        } catch {
+          // Skip malformed schema
+        }
+      }
+
+      if (schemaMatch.length < 10) break
+      page++
+      await SLEEP(250)
+    } catch (error) {
+      console.warn(`[discover-anf] Page ${page} error:`, error instanceof Error ? error.message : error)
+      break
+    }
+  }
+
   return groups
 }
 
@@ -596,11 +943,14 @@ async function triggerLiveRefresh(): Promise<void> {
   console.log('[discover] Starting live product refresh…')
   const t = Date.now()
 
-  const [reformationRes, aritziaRes, ppRes, ediktedRes] = await Promise.allSettled([
+  const [reformationRes, aritziaRes, ppRes, ediktedRes, bmRes, uniqloRes, anfRes] = await Promise.allSettled([
     fetchReformationLiveProducts(),
     fetchAritziaAlgolia(),
     fetchShopifyAll('https://us.princesspolly.com', 'Princess Polly', 'Princess Polly', 4.3),
     fetchShopifyAll('https://edikted.com', 'Edikted', 'Edikted', 4.1),
+    fetchBrandyMelville(),
+    fetchUNIQLO(),
+    fetchAbercrombieAndFitch(),
   ])
 
   const newGroups: ProductGroup[] = []
@@ -631,6 +981,27 @@ async function triggerLiveRefresh(): Promise<void> {
   } else {
     console.error('[discover] Reformation fetch failed:', reformationRes.reason?.message)
     newGroups.push(...loadReformationStatic())
+  }
+
+  if (bmRes.status === 'fulfilled') {
+    newGroups.push(...bmRes.value)
+    console.log(`[discover] Brandy Melville live: ${bmRes.value.length} products`)
+  } else {
+    console.error('[discover] Brandy Melville fetch failed:', bmRes.reason?.message)
+  }
+
+  if (uniqloRes.status === 'fulfilled') {
+    newGroups.push(...uniqloRes.value)
+    console.log(`[discover] UNIQLO live: ${uniqloRes.value.length} products`)
+  } else {
+    console.error('[discover] UNIQLO fetch failed:', uniqloRes.reason?.message)
+  }
+
+  if (anfRes.status === 'fulfilled') {
+    newGroups.push(...anfRes.value)
+    console.log(`[discover] Abercrombie & Fitch live: ${anfRes.value.length} products`)
+  } else {
+    console.error('[discover] Abercrombie & Fitch fetch failed:', anfRes.reason?.message)
   }
 
   if (newGroups.length > 0) {
@@ -699,15 +1070,26 @@ function buildResult(paletteHexes: string[], catFilter: string, searchQ: string)
         url: c.url,
         imageUrl: c.imageUrl,
       }))
-      matchingColors = options.filter((c) => c.matchScore >= 35).sort((a, b) => b.matchScore - a.matchScore)
-      if (!matchingColors.length) continue
-      bestScore = matchingColors[0].matchScore
-      if (bestScore < 45) continue
+      // For products with only a generic "Default" color, don't filter — we don't have real color data
+      const isGenericColor = g.allColorOptions.length === 1 && g.allColorOptions[0].name === 'Default'
+      if (isGenericColor) {
+        matchingColors = options
+        bestScore = 50 // Default baseline score for products without real color options
+      } else {
+        matchingColors = options.filter((c) => c.matchScore >= 35).sort((a, b) => b.matchScore - a.matchScore)
+        if (!matchingColors.length) continue
+        bestScore = matchingColors[0].matchScore
+        if (bestScore < 45) continue
+      }
     } else {
       matchingColors = g.allColorOptions.slice(0, 6).map((c) => ({
         name: c.name, hex: c.hex, matchScore: 50, url: c.url, imageUrl: c.imageUrl,
       }))
     }
+
+    // Ensure product has at least a name and URL; skip if all color options lack both images and URLs
+    const hasValidContent = g.primaryImageUrl || matchingColors.some((c) => c.imageUrl || c.url)
+    if (!hasValidContent && !g.name) continue
 
     scored.push({
       group: g,
@@ -727,26 +1109,35 @@ function buildResult(paletteHexes: string[], catFilter: string, searchQ: string)
       || matchingColors[0]?.imageUrl
       || ''
 
+    // Include all color options from the product, sorted by match score (best first)
+    const allColors = g.allColorOptions.map((c) => ({
+      name: c.name,
+      hex: c.hex,
+      matchScore: hasPalette ? (hexScoreCache.get(c.hex) ?? 0) : 50,
+      url: c.url,
+      imageUrl: c.imageUrl,
+    })).sort((a, b) => b.matchScore - a.matchScore)
+
     return {
-    id: g.id,
-    name: g.name,
-    brand: g.brand,
-    retailer: g.retailer,
-    price: normalizePrice(g.price),
-    originalPrice: g.originalPrice,
-    category: g.category,
-    imageUrl: primaryImage,
-    hexColors: matchingColors.map((c) => c.hex),
-    sizes: g.sizes,
-    rating: g.rating,
-    reviewCount: g.reviewCount,
-    affiliateUrl: matchingColors[0].url,
-    tags: g.tags,
-    aspectRatio: 'tall' as const,
-    matchScore: hasPalette ? bestScore : undefined,
-    colorOptions: matchingColors,
-  }
-  })
+      id: g.id,
+      name: g.name,
+      brand: g.brand,
+      retailer: g.retailer,
+      price: normalizePrice(g.price),
+      originalPrice: g.originalPrice,
+      category: g.category,
+      imageUrl: primaryImage,
+      hexColors: matchingColors.map((c) => c.hex),
+      sizes: g.sizes,
+      rating: g.rating,
+      reviewCount: g.reviewCount,
+      affiliateUrl: matchingColors[0].url,
+      tags: g.tags,
+      aspectRatio: 'tall' as const,
+      matchScore: hasPalette ? bestScore : undefined,
+      colorOptions: allColors,
+    }
+  }).filter((p) => !!p.imageUrl)
 }
 
 // ── Route ─────────────────────────────────────────────────────────────────────
@@ -763,7 +1154,7 @@ router.get('/status', (_req: Request, res: Response) => {
   })
 })
 
-router.get('/', (req: Request, res: Response) => {
+router.get('/', async (req: Request, res: Response) => {
   const { palette, category, search, page, limit } = req.query
 
   const paletteHexes: string[] = palette
@@ -777,6 +1168,9 @@ router.get('/', (req: Request, res: Response) => {
   const cacheKey = `${paletteHexes.join(',')}|${catFilter}|${searchQ}`
   let products = getCachedResult(cacheKey)
   if (!products) {
+    if ((!_allGroups || _allGroups.length === 0) && !_refreshing) {
+      await triggerLiveRefresh()
+    }
     products = buildResult(paletteHexes, catFilter, searchQ)
     resultCache.set(cacheKey, { products, ts: Date.now() })
   }

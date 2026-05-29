@@ -86,7 +86,7 @@ const STORE_NAMES: Record<string, string> = {
   urbanoutfitters: 'Urban Outfitters', abercrombie: 'Abercrombie & Fitch', hollister: 'Hollister',
   gap: 'Gap', bananarepublic: 'Banana Republic', jcrew: 'J.Crew', amazon: 'Amazon',
   target: 'Target', walmart: 'Walmart', macys: "Macy's", bloomingdales: "Bloomingdale's",
-  saksfifthavenue: 'Saks Fifth Avenue', neimanmarcus: 'Neiman Marcus', revolve: 'Revolve',
+  saksfifthavenue: 'Saks Fifth Avenue', neimanmarcus: 'Neiman Marcus',
   shopbop: 'Shopbop', ssense: 'SSENSE', farfetch: 'Farfetch', matchesfashion: 'MatchesFashion',
   lulus: 'Lulus', shein: 'SHEIN', prettylittlething: 'PrettyLittleThing', asos: 'ASOS',
   boohoo: 'Boohoo', fashionnova: 'Fashion Nova', forever21: 'Forever 21', express: 'Express',

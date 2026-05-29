@@ -12,7 +12,7 @@ const CATEGORIES: { id: ProductCategory | 'all'; label: string }[] = [
   { id: 'bags',     label: 'Bags'     },
 ]
 
-const RETAILERS = ['All', 'Aritzia', 'Princess Polly', 'Reformation', 'Edikted']
+const RETAILERS = ['All', 'Aritzia', 'Princess Polly', 'Reformation', 'Edikted', 'Brandy Melville', 'UNIQLO']
 const PAGE_SIZE = 50
 
 export default function FeedPage() {
@@ -108,7 +108,7 @@ export default function FeedPage() {
             </div>
             <span className="text-xs text-stone-500">
               <span className="font-semibold text-stone-800">{palette.seasonalType}</span>
-              {' '}· {total > 0 ? `${total.toLocaleString()} matches across` : 'searching'} Aritzia, Princess Polly &amp; Reformation
+              {' '}· {total > 0 ? `${total.toLocaleString()} matches across` : 'searching'} 8 retailers
             </span>
           </div>
         </div>

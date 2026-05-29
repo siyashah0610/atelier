@@ -8,8 +8,8 @@ import BodyStyleDisplay from '../components/BodyStyleDisplay'
 import MakeupDisplay from '../components/MakeupDisplay'
 
 const RETAILERS = [
-  'Revolve', 'Aritzia', 'Free People', 'Mango', 'ASOS',
-  'Zara', 'Reformation', 'H&M', '& Other Stories', 'Everlane',
+  'Aritzia', 'Princess Polly', 'Reformation', 'Edikted', 'Brandy Melville', 'UNIQLO', 'Abercrombie & Fitch',
+  'Free People', 'Mango', 'ASOS', 'Zara', 'H&M', '& Other Stories', 'Everlane',
   'J.Crew', 'Madewell', 'Steve Madden', 'Mejuri', 'Sephora',
 ]
 

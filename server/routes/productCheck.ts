@@ -93,7 +93,7 @@ interface ScrapedProduct {
   fitDescription: string
 }
 
-async function scrapeProduct(pageUrl: string): Promise<ScrapedProduct | null> {
+export async function scrapeProduct(pageUrl: string): Promise<ScrapedProduct | null> {
   if (isDirectImageUrl(pageUrl)) {
     return { name: '', brand: '', imageUrls: [pageUrl], colorOptions: [], colorHints: [], availableSizes: [], fitDescription: '' }
   }

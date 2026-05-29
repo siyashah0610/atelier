@@ -19,13 +19,11 @@ export default function ProductCard({ product, onClick }: Props) {
   const displayPrice = formatPrice(product.price)
   const displayOriginalPrice = formatPrice(product.originalPrice)
 
-  // Use colorOptions for swatches if available, else fall back to hexColors
-  const swatches = product.colorOptions?.length
-    ? product.colorOptions.map((c) => c.hex)
-    : product.hexColors
+  // Use all available color options from the product
+  const allColorOptions = product.colorOptions || []
 
-  // Primary display hex (best-matching color)
-  const primaryHex = swatches[0] ?? '#C8C8C8'
+  // Primary display hex (best-matching color - first in the sorted list)
+  const primaryHex = allColorOptions[0]?.hex ?? '#C8C8C8'
 
   // Generate a two-stop gradient from the primary hex for the color block
   function hexWithOpacity(hex: string, alpha: string) {
@@ -130,20 +128,53 @@ export default function ProductCard({ product, onClick }: Props) {
           )}
         </div>
 
-        {/* Color swatches — all palette-matching colors */}
-        <div className="flex items-center gap-1 mt-1.5 flex-wrap">
-          {swatches.slice(0, 8).map((hex, i) => (
-            <div
-              key={i}
-              className="w-3 h-3 rounded-full border border-stone-200 flex-shrink-0"
-              style={{ backgroundColor: hex }}
-              title={product.colorOptions?.[i]?.name ?? ''}
-            />
-          ))}
-          {swatches.length > 8 && (
-            <span className="text-[10px] text-stone-400">+{swatches.length - 8}</span>
-          )}
-        </div>
+        {/* Color swatches — all available color variants */}
+        {allColorOptions.length > 0 && (
+          <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+            {allColorOptions.slice(0, 12).map((option, i) => {
+              const isBestMatch = i === 0
+              return (
+                <button
+                  key={i}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    // Color click will be handled by parent (potentially)
+                  }}
+                  className={`relative group/swatch flex-shrink-0 transition-all ${
+                    isBestMatch ? 'w-4 h-4' : 'w-3.5 h-3.5'
+                  }`}
+                  title={`${option.name}${isBestMatch ? ' (Best match)' : ''}`}
+                >
+                  <div
+                    className={`w-full h-full rounded-full flex-shrink-0 transition-all ${
+                      isBestMatch
+                        ? 'ring-2 ring-stone-400 ring-offset-1 shadow-sm'
+                        : 'border border-stone-200 hover:border-stone-400 hover:scale-110'
+                    }`}
+                    style={{ backgroundColor: option.hex }}
+                  />
+                  {/* Tooltip on hover */}
+                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-stone-900 text-white text-[10px] rounded pointer-events-none opacity-0 group-hover/swatch:opacity-100 transition-opacity z-20 whitespace-nowrap">
+                    <div className="font-semibold">{option.name}</div>
+                    {option.matchScore !== undefined && score !== undefined && (
+                      <div className="text-stone-300 text-[9px] mt-0.5">
+                        Match: {Math.round(option.matchScore)}%
+                      </div>
+                    )}
+                    {isBestMatch && (
+                      <div className="text-stone-400 text-[8px] mt-1 border-t border-stone-700 pt-1">
+                        Best for your palette
+                      </div>
+                    )}
+                  </div>
+                </button>
+              )
+            })}
+            {allColorOptions.length > 12 && (
+              <span className="text-[10px] text-stone-500 font-medium ml-1">+{allColorOptions.length - 12} more</span>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )
