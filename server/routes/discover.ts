@@ -113,26 +113,36 @@ function mapCategory(raw: string | undefined): ProductCategory {
 
 async function fetchWithCurl(url: string, headers?: Record<string, string>): Promise<any> {
   try {
-    // Build curl command with headers
-    let cmd = `curl -s '${url.replace(/'/g, "'\\''")}'`
-    const allHeaders = {
-      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-      'Accept': 'application/json',
-      'Accept-Language': 'en-US,en;q=0.9',
-      'Accept-Encoding': 'gzip, deflate, br',
-      ...headers,
+    // Use a temporary file to avoid shell escaping issues
+    const tmpFile = `/tmp/curl_${Date.now()}_${Math.random().toString(36).slice(2)}.json`
+    let cmd = `curl -s -o '${tmpFile}' `
+
+    // Add headers
+    cmd += `-H 'User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36' `
+    cmd += `-H 'Accept: application/json' `
+    cmd += `-H 'Accept-Language: en-US,en;q=0.9' `
+    cmd += `-H 'Accept-Encoding: gzip, deflate' `
+
+    if (headers) {
+      for (const [key, value] of Object.entries(headers)) {
+        const escapedVal = value.replace(/'/g, "'\\''")
+        cmd += `-H '${key}: ${escapedVal}' `
+      }
     }
 
-    for (const [key, value] of Object.entries(allHeaders)) {
-      cmd += ` -H '${(key + ': ' + value).replace(/'/g, "'\\''")}'`
-    }
+    cmd += `'${url}'`
 
-    const result = execSync(cmd, {
+    execSync(cmd, {
       encoding: 'utf8',
       timeout: 30000,
-      maxBuffer: 10 * 1024 * 1024,
-      shell: '/bin/bash'
+      shell: '/bin/bash',
+      stdio: 'pipe'
     })
+
+    // Read the file
+    const fs = require('fs')
+    const result = fs.readFileSync(tmpFile, 'utf8')
+    fs.unlinkSync(tmpFile)
 
     if (!result || !result.trim()) return null
     return JSON.parse(result)
