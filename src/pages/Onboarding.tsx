@@ -8,8 +8,8 @@ import BodyStyleDisplay from '../components/BodyStyleDisplay'
 import MakeupDisplay from '../components/MakeupDisplay'
 
 const RETAILERS = [
-  'Aritzia', 'Princess Polly', 'Reformation', 'Edikted', 'Brandy Melville', 'UNIQLO', 'Abercrombie & Fitch',
-  'Free People', 'Mango', 'ASOS', 'Zara', 'H&M', '& Other Stories', 'Everlane',
+  'Aritzia', 'Princess Polly', 'Reformation', 'Edikted', 'Brandy Melville', 'UNIQLO', 'Jaded London',
+  'Abercrombie & Fitch', 'Free People', 'Mango', 'ASOS', 'Zara', 'H&M', '& Other Stories', 'Everlane',
   'J.Crew', 'Madewell', 'Steve Madden', 'Mejuri', 'Sephora',
 ]
 
@@ -72,8 +72,8 @@ export default function Onboarding() {
     // Wait until AppContext has finished its initial data load
     if (user && initialized && !dataLoading) {
       if (userProfile?.palette) {
-        // Account already completed onboarding -> go directly to profile
-        setCurrentPage('profile')
+        // Account already completed onboarding -> go directly to Discover
+        setCurrentPage('feed')
       } else if (step === 'intro') {
         // New account -> skip intro and go to step 2 (photo upload)
         setName(user.user_metadata?.name ?? '')
@@ -273,7 +273,7 @@ export default function Onboarding() {
       faceAnalysis: faceAnalysis || undefined,
     }
     setUserProfile(profile)
-    setCurrentPage('profile')
+    setCurrentPage('feed')
   }
 
   const handleCreateAccount = async () => {

@@ -774,6 +774,7 @@ export const retailers = [
   'ASOS',
   'Zara',
   'Reformation',
+  'Jaded London',
   'H&M',
   '& Other Stories',
   'Everlane',

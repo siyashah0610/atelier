@@ -22,9 +22,16 @@ export default function Header() {
     }
   }
 
+  const goToPage = (page: Page) => {
+    if (page === 'feed') {
+      window.dispatchEvent(new CustomEvent('atelier:refresh-feed'))
+    }
+    setCurrentPage(page)
+  }
+
   const navLink = (page: Page, label: string) => (
     <button
-      onClick={() => setCurrentPage(page)}
+      onClick={() => goToPage(page)}
       className={`text-sm font-medium transition-colors ${
         currentPage === page
           ? 'text-stone-900 border-b border-stone-900'
@@ -136,7 +143,7 @@ export default function Header() {
           {(['feed', 'check', 'wishlists', 'analyses', 'profile', 'cart'] as Page[]).map((page) => (
             <button
               key={page}
-              onClick={() => setCurrentPage(page)}
+              onClick={() => goToPage(page)}
               className={`flex-1 py-2 text-xs font-medium capitalize ${
                 currentPage === page ? 'text-stone-900 bg-stone-50' : 'text-stone-500'
               }`}

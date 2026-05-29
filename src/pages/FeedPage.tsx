@@ -23,38 +23,6 @@ const BASIC_COLORS = [
   { name: 'White', hex: '#F5F5F5' },
 ]
 
-function useDropdownPosition(isOpen: boolean, buttonRef: React.RefObject<HTMLButtonElement>) {
-  const [position, setPosition] = useState<{ top: number; left: number } | null>(null)
-
-  useEffect(() => {
-    if (!isOpen || !buttonRef.current) {
-      setPosition(null)
-      return
-    }
-
-    const updatePosition = () => {
-      if (!buttonRef.current) return
-      const rect = buttonRef.current.getBoundingClientRect()
-      setPosition({
-        top: rect.bottom,
-        left: rect.left,
-      })
-    }
-
-    updatePosition()
-    const scrollHandler = () => updatePosition()
-    window.addEventListener('scroll', scrollHandler, true)
-    window.addEventListener('resize', updatePosition)
-
-    return () => {
-      window.removeEventListener('scroll', scrollHandler, true)
-      window.removeEventListener('resize', updatePosition)
-    }
-  }, [isOpen, buttonRef])
-
-  return position
-}
-
 function hexToRgb(hex: string): { r: number; g: number; b: number } {
   const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex)
   return result ? {
@@ -86,15 +54,49 @@ function getBasicColor(hex: string): string {
   return closest.name.toLowerCase()
 }
 
-const CATEGORIES: { id: ProductCategory | 'all'; label: string }[] = [
+const MAIN_CATEGORIES: { id: ProductCategory; label: string }[] = [
   { id: 'all',      label: 'All'      },
   { id: 'clothing', label: 'Clothing' },
   { id: 'shoes',    label: 'Shoes'    },
   { id: 'jewelry',  label: 'Jewelry'  },
   { id: 'bags',     label: 'Bags'     },
+  { id: 'makeup',   label: 'Makeup'   },
 ]
 
-const RETAILERS = ['All', 'Aritzia', 'Princess Polly', 'Reformation', 'Edikted', 'Brandy Melville', 'UNIQLO']
+const SUBCATEGORIES: Record<ProductCategory, { id: string; label: string }[]> = {
+  clothing: [
+    { id: 'tops', label: 'Tops' },
+    { id: 'bottoms', label: 'Bottoms (Pants, Shorts, Leggings, Skirts, Jeans)' },
+    { id: 'dresses', label: 'Dresses' },
+    { id: 'outerwear', label: 'Outerwear' },
+    { id: 'activewear', label: 'Activewear' },
+  ],
+  shoes: [
+    { id: 'sneakers', label: 'Sneakers' },
+    { id: 'heels', label: 'Heels' },
+    { id: 'flats', label: 'Flats' },
+    { id: 'boots', label: 'Boots' },
+    { id: 'sandals', label: 'Sandals' },
+  ],
+  jewelry: [
+    { id: 'necklaces', label: 'Necklaces' },
+    { id: 'bracelets', label: 'Bracelets' },
+    { id: 'earrings', label: 'Earrings' },
+    { id: 'rings', label: 'Rings' },
+    { id: 'anklets', label: 'Anklets' },
+  ],
+  bags: [
+    { id: 'crossbody', label: 'Crossbody' },
+    { id: 'tote', label: 'Tote' },
+    { id: 'backpack', label: 'Backpack' },
+    { id: 'clutch', label: 'Clutch' },
+    { id: 'shoulder', label: 'Shoulder' },
+  ],
+  makeup: [],
+  all: [],
+}
+
+const RETAILERS = ['All', 'Aritzia', 'Princess Polly', 'Reformation', 'Edikted', 'Brandy Melville', 'UNIQLO', 'Dairy Boy', 'Boys Lie', 'Alo', 'Oh Polly', 'Frankies Bikinis', 'Jaded London']
 const FILTER_PILL_CLASS = 'px-3 py-1.5 rounded-full border border-stone-200 bg-white text-stone-700 shadow-sm transition-all hover:border-stone-300 hover:bg-stone-50 focus:outline-none focus:ring-2 focus:ring-stone-300/70'
 const DROPDOWN_PANEL_CLASS = 'rounded-2xl border border-stone-200 bg-white shadow-xl ring-1 ring-black/5 overflow-hidden'
 const PAGE_SIZE = 50
@@ -107,24 +109,19 @@ export default function FeedPage() {
   const [total, setTotal]           = useState(0)
   const [loadingFirst, setLoadingFirst] = useState(true)
   const [loadingMore, setLoadingMore]   = useState(false)
-  const [categories, setCategories] = useState<(ProductCategory | 'all')[]>(['all'])
+  const [mainCategory, setMainCategory] = useState<ProductCategory>('all')
+  const [subcategories, setSubcategories] = useState<string[]>([])
   const [retailers, setRetailers]   = useState<string[]>(['All'])
   const [colors, setColors]         = useState<string[]>([])
+  const [priceMin, setPriceMin]     = useState<number | null>(null)
+  const [priceMax, setPriceMax]     = useState<number | null>(null)
   const [sortBy, setSortBy]         = useState<'match' | 'price-asc' | 'price-desc'>('match')
   const [search, setSearch]         = useState('')
-  const [retailerDropdownOpen, setRetailerDropdownOpen] = useState(false)
-  const [categoryDropdownOpen, setCategoryDropdownOpen] = useState(false)
-  const [colorDropdownOpen, setColorDropdownOpen] = useState(false)
+  const [feedSeed, setFeedSeed]     = useState(() => Date.now())
+  const [isFilterDrawerOpen, setIsFilterDrawerOpen] = useState(false)
 
   const sentinelRef = useRef<HTMLDivElement>(null)
-  const categoryButtonRef = useRef<HTMLButtonElement>(null)
-  const retailerButtonRef = useRef<HTMLButtonElement>(null)
-  const colorButtonRef = useRef<HTMLButtonElement>(null)
   const palette = userProfile?.palette
-
-  const categoryDropdownPos = useDropdownPosition(categoryDropdownOpen, categoryButtonRef)
-  const retailerDropdownPos = useDropdownPosition(retailerDropdownOpen, retailerButtonRef)
-  const colorDropdownPos = useDropdownPosition(colorDropdownOpen, colorButtonRef)
 
   // Stable fetch function for a given page
   const fetchPage = useCallback(
@@ -132,11 +129,18 @@ export default function FeedPage() {
       if (replace) setLoadingFirst(true)
       else setLoadingMore(true)
 
+      const selectedRetailers = retailers.includes('All') ? [] : retailers
+
       const params = new URLSearchParams()
       if (palette) params.set('palette', palette.allHexCodes.join(','))
-      if (!categories.includes('all') && categories.length === 1) params.set('category', categories[0])
+      params.set('category', mainCategory)
+      if (subcategories.length > 0) params.set('subcategories', subcategories.join(','))
+      if (selectedRetailers.length > 0) params.set('retailers', selectedRetailers.join(','))
       if (search) params.set('search', search)
       if (sortBy === 'match') params.set('sort', 'match')
+      if (priceMin !== null) params.set('priceMin', String(priceMin))
+      if (priceMax !== null) params.set('priceMax', String(priceMax))
+      params.set('seed', String(feedSeed))
       params.set('page', String(pageNum))
       params.set('limit', String(PAGE_SIZE))
 
@@ -153,11 +157,16 @@ export default function FeedPage() {
         else setLoadingMore(false)
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [categories, search, palette?.seasonalType]
+    [mainCategory, subcategories, search, retailers, palette?.seasonalType, priceMin, priceMax, feedSeed, sortBy]
   )
 
-  // Reload from page 0 when filters change
+  useEffect(() => {
+    const refreshFeed = () => setFeedSeed(Date.now())
+    window.addEventListener('atelier:refresh-feed', refreshFeed)
+    return () => window.removeEventListener('atelier:refresh-feed', refreshFeed)
+  }, [])
+
+  // Reload from page 0 when filters change or the feed is refreshed
   useEffect(() => {
     setProducts([])
     setPage(0)
@@ -181,11 +190,11 @@ export default function FeedPage() {
     return () => observer.disconnect()
   }, [products.length, total, page, loadingFirst, loadingMore, fetchPage])
 
-  // Client-side category + retailer + color filter + sort (applied on top of server results)
+  // Client-side subcategory + retailer + color filter + sort (applied on top of server results)
   const visible = (() => {
     let arr = products
-    if (!categories.includes('all')) {
-      arr = arr.filter((p) => categories.includes(p.category as ProductCategory))
+    if (subcategories.length > 0) {
+      arr = arr.filter((p) => subcategories.includes(p.subcategory || ''))
     }
     if (!retailers.includes('All')) {
       arr = arr.filter((p) => retailers.includes(p.retailer))
@@ -221,9 +230,8 @@ export default function FeedPage() {
 
       {/* Sticky filter bar */}
       <div className="sticky top-14 sm:top-[57px] z-30 bg-[#FAFAF7]/95 backdrop-blur-sm border-b border-stone-100">
-        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center gap-2 overflow-x-auto scrollbar-hide">
-          {/* Search */}
-          <div className="relative flex-shrink-0">
+        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center gap-2">
+          <div className="relative flex-1 max-w-xs">
             <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-stone-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
@@ -231,162 +239,22 @@ export default function FeedPage() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search…"
-              className="pl-8 pr-3 py-1.5 text-xs border border-stone-200 rounded-full bg-white focus:outline-none focus:border-stone-400 w-28"
+              className="w-full pl-8 pr-3 py-1.5 text-xs border border-stone-200 rounded-full bg-white focus:outline-none focus:border-stone-400"
             />
           </div>
 
-          {/* Category Dropdown */}
-          <div className="flex-shrink-0">
-            <button
-              ref={categoryButtonRef}
-              onClick={() => setCategoryDropdownOpen(!categoryDropdownOpen)}
-              className={`${FILTER_PILL_CLASS} flex items-center gap-1.5 text-xs font-medium whitespace-nowrap ${categoryDropdownOpen ? 'border-stone-300 bg-stone-50' : ''}`}
-            >
-              {categories.includes('all') ? 'All Categories' : `${categories.length} selected`}
-              <svg className={`w-3 h-3 transition-transform ${categoryDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
-              </svg>
-            </button>
+          <button
+            type="button"
+            onClick={() => setIsFilterDrawerOpen(true)}
+            className="inline-flex items-center gap-1.5 rounded-full border border-stone-200 bg-white px-3 py-1.5 text-xs font-medium text-stone-700 shadow-sm hover:border-stone-300 hover:bg-stone-50 focus:outline-none focus:ring-2 focus:ring-stone-300/70"
+          >
+            <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-4.414 4.414A1 1 0 0016 12.414V19l-4-2v-4.586a1 1 0 00-.293-.707L7.293 7.293A1 1 0 017 6.586V4z" />
+            </svg>
+            Filters
+          </button>
 
-            {categoryDropdownOpen && categoryDropdownPos && (
-              <>
-                <div className="fixed inset-0 z-40" onClick={() => setCategoryDropdownOpen(false)} />
-                <div
-                  className={`${DROPDOWN_PANEL_CLASS} fixed min-w-40 max-h-60 overflow-y-auto z-50 py-1`}
-                  style={{ top: `${categoryDropdownPos.top}px`, left: `${categoryDropdownPos.left}px` }}
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  {CATEGORIES.map((c) => (
-                    <label
-                      key={c.id}
-                      className="flex items-center gap-2.5 px-4 py-2.5 hover:bg-stone-50 cursor-pointer first:rounded-t-lg last:rounded-b-lg text-xs"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={categories.includes(c.id)}
-                        onChange={(e) => {
-                          if (c.id === 'all') {
-                            setCategories(e.target.checked ? ['all'] : [])
-                          } else {
-                            const newCategories = e.target.checked
-                              ? categories.filter(x => x !== 'all').concat(c.id)
-                              : categories.filter(x => x !== c.id)
-                            setCategories(newCategories.length === 0 ? ['all'] : newCategories)
-                          }
-                        }}
-                        className="w-3.5 h-3.5 rounded border-stone-300 cursor-pointer"
-                      />
-                      <span className="text-stone-700">{c.label}</span>
-                    </label>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
-
-          <div className="w-px h-4 bg-stone-200 flex-shrink-0" />
-
-          {/* Retailer Dropdown */}
-          <div className="flex-shrink-0">
-            <button
-              ref={retailerButtonRef}
-              onClick={() => setRetailerDropdownOpen(!retailerDropdownOpen)}
-              className={`${FILTER_PILL_CLASS} flex items-center gap-1.5 text-xs font-medium whitespace-nowrap ${retailerDropdownOpen ? 'border-stone-300 bg-stone-50' : ''}`}
-            >
-              {retailers.includes('All') ? 'All Retailers' : `${retailers.length} selected`}
-              <svg className={`w-3 h-3 transition-transform ${retailerDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
-              </svg>
-            </button>
-
-            {retailerDropdownOpen && retailerDropdownPos && (
-              <>
-                <div className="fixed inset-0 z-40" onClick={() => setRetailerDropdownOpen(false)} />
-                <div
-                  className={`${DROPDOWN_PANEL_CLASS} fixed min-w-40 max-h-60 overflow-y-auto z-50 py-1`}
-                  style={{ top: `${retailerDropdownPos.top}px`, left: `${retailerDropdownPos.left}px` }}
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  {RETAILERS.map((r) => (
-                    <label
-                      key={r}
-                      className="flex items-center gap-2.5 px-4 py-2.5 hover:bg-stone-50 cursor-pointer first:rounded-t-lg last:rounded-b-lg text-xs"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={retailers.includes(r)}
-                        onChange={(e) => {
-                          if (r === 'All') {
-                            setRetailers(e.target.checked ? ['All'] : [])
-                          } else {
-                            const newRetailers = e.target.checked
-                              ? retailers.filter(x => x !== 'All').concat(r)
-                              : retailers.filter(x => x !== r)
-                            setRetailers(newRetailers.length === 0 ? ['All'] : newRetailers)
-                          }
-                        }}
-                        className="w-3.5 h-3.5 rounded border-stone-300 cursor-pointer"
-                      />
-                      <span className="text-stone-700">{r}</span>
-                    </label>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
-
-          {/* Color Dropdown */}
-          <div className="flex-shrink-0">
-            <button
-              ref={colorButtonRef}
-              onClick={() => setColorDropdownOpen(!colorDropdownOpen)}
-              className={`${FILTER_PILL_CLASS} flex items-center gap-1.5 text-xs font-medium whitespace-nowrap ${colorDropdownOpen ? 'border-stone-300 bg-stone-50' : ''}`}
-            >
-              {colors.length === 0 ? 'All Colors' : `${colors.length} selected`}
-              <svg className={`w-3 h-3 transition-transform ${colorDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
-              </svg>
-            </button>
-
-            {colorDropdownOpen && colorDropdownPos && (
-              <>
-                <div className="fixed inset-0 z-40" onClick={() => setColorDropdownOpen(false)} />
-                <div
-                  className={`${DROPDOWN_PANEL_CLASS} fixed min-w-48 max-h-60 overflow-y-auto z-50 py-1`}
-                  style={{ top: `${colorDropdownPos.top}px`, left: `${colorDropdownPos.left}px` }}
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  {BASIC_COLORS.map((color) => (
-                    <label
-                      key={color.name}
-                      className="flex items-center gap-3 px-4 py-3 hover:bg-stone-50 cursor-pointer first:rounded-t-lg last:rounded-b-lg text-xs"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={colors.includes(color.name.toLowerCase())}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setColors([...colors, color.name.toLowerCase()])
-                          } else {
-                            setColors(colors.filter(c => c !== color.name.toLowerCase()))
-                          }
-                        }}
-                        className="w-3.5 h-3.5 rounded border-stone-300 cursor-pointer"
-                      />
-                      <div
-                        className="w-4 h-4 rounded-full border border-stone-300"
-                        style={{ backgroundColor: color.hex }}
-                      />
-                      <span className="text-stone-700 flex-1">{color.name}</span>
-                    </label>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
-
-          {/* Sort */}
-          <div className="flex-shrink-0 ml-auto">
+          <div className="ml-auto flex-shrink-0">
             <select
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
@@ -399,6 +267,159 @@ export default function FeedPage() {
           </div>
         </div>
       </div>
+
+      {isFilterDrawerOpen && (
+        <div className="fixed inset-0 z-40 bg-black/20" onClick={() => setIsFilterDrawerOpen(false)} />
+      )}
+
+      <aside className={`fixed left-0 top-0 z-50 h-full w-80 max-w-[90vw] border-r border-stone-200 bg-[#FAFAF7] shadow-2xl transition-transform duration-200 ${isFilterDrawerOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        <div className="flex h-full flex-col">
+          <div className="flex items-center justify-between border-b border-stone-200 px-4 py-4">
+            <div>
+              <p className="text-sm font-semibold text-stone-800">Filters</p>
+              <p className="text-xs text-stone-500">Refine your feed</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsFilterDrawerOpen(false)}
+              className="rounded-full border border-stone-200 bg-white p-2 text-stone-500 shadow-sm hover:border-stone-300 hover:text-stone-700"
+              aria-label="Close filters"
+            >
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          <div className="flex-1 space-y-6 overflow-y-auto px-4 py-4 text-sm">
+            <section>
+              <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-stone-500">Search</label>
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search products…"
+                className="w-full rounded-2xl border border-stone-200 bg-white px-3 py-2 text-xs text-stone-700 shadow-sm focus:outline-none focus:border-stone-400"
+              />
+            </section>
+
+            <section>
+              <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-stone-500">Category</label>
+              <div className="space-y-1 rounded-2xl border border-stone-200 bg-white p-2 shadow-sm">
+                {MAIN_CATEGORIES.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => {
+                      setMainCategory(c.id)
+                      setSubcategories([])
+                    }}
+                    className={`w-full rounded-xl px-3 py-2 text-left text-xs transition-colors ${mainCategory === c.id ? 'bg-stone-900 text-white' : 'text-stone-700 hover:bg-stone-50'}`}
+                  >
+                    {c.label}
+                  </button>
+                ))}
+              </div>
+            </section>
+
+            {SUBCATEGORIES[mainCategory].length > 0 && (
+              <section>
+                <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-stone-500">Subcategory</label>
+                <div className="space-y-2 rounded-2xl border border-stone-200 bg-white p-2 shadow-sm">
+                  {SUBCATEGORIES[mainCategory].map((s) => (
+                    <label key={s.id} className="flex cursor-pointer items-start gap-2 rounded-xl px-2 py-1.5 text-xs text-stone-700 hover:bg-stone-50">
+                      <input
+                        type="checkbox"
+                        checked={subcategories.includes(s.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) setSubcategories([...subcategories, s.id])
+                          else setSubcategories(subcategories.filter((item) => item !== s.id))
+                        }}
+                        className="mt-0.5 h-3.5 w-3.5 rounded border-stone-300"
+                      />
+                      <span>{s.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            <section>
+              <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-stone-500">Retailers</label>
+              <div className="space-y-1 rounded-2xl border border-stone-200 bg-white p-2 shadow-sm">
+                {RETAILERS.map((r) => (
+                  <label key={r} className="flex cursor-pointer items-center gap-2 rounded-xl px-2 py-1.5 text-xs text-stone-700 hover:bg-stone-50">
+                    <input
+                      type="checkbox"
+                      checked={retailers.includes(r)}
+                      onChange={(e) => {
+                        if (r === 'All') setRetailers(e.target.checked ? ['All'] : [])
+                        else {
+                          const next = e.target.checked ? retailers.filter((item) => item !== 'All').concat(r) : retailers.filter((item) => item !== r)
+                          setRetailers(next.length ? next : ['All'])
+                        }
+                      }}
+                      className="h-3.5 w-3.5 rounded border-stone-300"
+                    />
+                    <span>{r}</span>
+                  </label>
+                ))}
+              </div>
+            </section>
+
+            <section>
+              <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-stone-500">Colors</label>
+              <div className="grid grid-cols-2 gap-2 rounded-2xl border border-stone-200 bg-white p-2 shadow-sm">
+                {BASIC_COLORS.map((color) => {
+                  const active = colors.includes(color.name.toLowerCase())
+                  return (
+                    <button
+                      key={color.name}
+                      type="button"
+                      onClick={() => setColors(active ? colors.filter((item) => item !== color.name.toLowerCase()) : [...colors, color.name.toLowerCase()])}
+                      className={`flex items-center gap-2 rounded-xl border px-2 py-2 text-left text-xs transition ${active ? 'border-stone-400 bg-stone-100' : 'border-stone-200 hover:bg-stone-50'}`}
+                    >
+                      <span className="h-3.5 w-3.5 rounded-full border border-stone-300" style={{ backgroundColor: color.hex }} />
+                      <span className="text-stone-700">{color.name}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </section>
+
+            <section>
+              <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-stone-500">Price</label>
+              <div className="rounded-2xl border border-stone-200 bg-white p-3 shadow-sm space-y-3">
+                <div>
+                  <label className="text-xs text-stone-600">Min</label>
+                  <input type="number" min="0" value={priceMin ?? ''} onChange={(e) => setPriceMin(e.target.value ? Number(e.target.value) : null)} className="mt-1 w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs text-stone-700 focus:outline-none focus:border-stone-400" />
+                </div>
+                <div>
+                  <label className="text-xs text-stone-600">Max</label>
+                  <input type="number" min={priceMin || 0} value={priceMax ?? ''} onChange={(e) => setPriceMax(e.target.value ? Number(e.target.value) : null)} className="mt-1 w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs text-stone-700 focus:outline-none focus:border-stone-400" />
+                </div>
+              </div>
+            </section>
+          </div>
+
+          <div className="border-t border-stone-200 px-4 py-3">
+            <button
+              type="button"
+              onClick={() => {
+                setMainCategory('all')
+                setSubcategories([])
+                setRetailers(['All'])
+                setColors([])
+                setPriceMin(null)
+                setPriceMax(null)
+                setIsFilterDrawerOpen(false)
+              }}
+              className="w-full rounded-full border border-stone-200 bg-white px-3 py-2 text-xs font-medium text-stone-700 shadow-sm hover:border-stone-300 hover:bg-stone-50"
+            >
+              Clear filters
+            </button>
+          </div>
+        </div>
+      </aside>
 
       {/* Grid */}
       <div className="max-w-7xl mx-auto px-3 sm:px-6 py-6">

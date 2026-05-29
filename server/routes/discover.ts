@@ -111,6 +111,38 @@ function mapCategory(raw: string | undefined): ProductCategory {
   return 'clothing'
 }
 
+function mapSubcategory(raw: string | undefined, category: ProductCategory): string | undefined {
+  const s = (raw ?? '').toLowerCase()
+
+  if (category === 'clothing') {
+    if (/shirt|top|blouse|tank|tee|sweater|cardigan|crop|tshirt|t-shirt/.test(s)) return 'tops'
+    if (/pants|pant|trouser|jean|denim|shorts|short|legging|tight|skirt/.test(s)) return 'bottoms'
+    if (/dress|gown/.test(s)) return 'dresses'
+    if (/coat|jacket|hoodie|blazer|vest|parka|bomber/.test(s)) return 'outerwear'
+    if (/yoga|sports|gym|athletic|active|workout/.test(s)) return 'activewear'
+  } else if (category === 'shoes') {
+    if (/sneaker|trainer|running|canvas/.test(s)) return 'sneakers'
+    if (/heel|pump|stiletto|mule|wedge/.test(s)) return 'heels'
+    if (/flat|ballet|slip-on|loafer/.test(s)) return 'flats'
+    if (/boot|booties?/.test(s)) return 'boots'
+    if (/sandal|slide|flip|thong/.test(s)) return 'sandals'
+  } else if (category === 'bags') {
+    if (/crossbody|cross-body|sling/.test(s)) return 'crossbody'
+    if (/tote/.test(s)) return 'tote'
+    if (/backpack|pack|rucksack/.test(s)) return 'backpack'
+    if (/clutch|pouch/.test(s)) return 'clutch'
+    if (/shoulder|crossover/.test(s)) return 'shoulder'
+  } else if (category === 'jewelry') {
+    if (/necklace|neck|pendant|choker|lariat/.test(s)) return 'necklaces'
+    if (/bracelet|bangle|cuff|torque/.test(s)) return 'bracelets'
+    if (/earring|ear|stud|drop/.test(s)) return 'earrings'
+    if (/ring|band/.test(s)) return 'rings'
+    if (/ankle|anklet|leg/.test(s)) return 'anklets'
+  }
+
+  return undefined
+}
+
 async function fetchWithCurl(url: string, headers?: Record<string, string>): Promise<any> {
   try {
     // Use a temporary file to avoid shell escaping issues
@@ -178,6 +210,7 @@ interface ProductGroup {
   price: number
   originalPrice?: number
   category: ProductCategory
+  subcategory?: string
   primaryImageUrl: string
   allColorOptions: RawColorOption[]
   sizes: string[]
@@ -310,6 +343,7 @@ function loadReliableFallbackCatalog(): ProductGroup[] {
     makeFallbackGroup('fallback-edikted-1', 'Edikted Signature Layer', 'Edikted', 'Edikted', 64, 'clothing', 'https://images.unsplash.com/photo-1496747611176-843222e1e57c?auto=format&fit=crop&w=900&q=80', ['Edikted', 'layer']),
     makeFallbackGroup('fallback-bm-1', 'Brandy Melville Classic Knit', 'Brandy Melville', 'Brandy Melville', 54, 'clothing', 'https://images.unsplash.com/photo-1483985988355-763728e1935b?auto=format&fit=crop&w=900&q=80', ['Brandy Melville', 'classic']),
     makeFallbackGroup('fallback-uniqlo-1', 'UNIQLO Essentials Layer', 'UNIQLO', 'UNIQLO', 39, 'clothing', 'https://images.unsplash.com/photo-1487412912498-0447578fcca8?auto=format&fit=crop&w=900&q=80', ['UNIQLO', 'essentials']),
+    makeFallbackGroup('fallback-jaded-1', 'Jaded London Streetwear Layer', 'Jaded London', 'Jaded London', 89, 'clothing', 'https://images.unsplash.com/photo-1483985988355-763728e1935b?auto=format&fit=crop&w=900&q=80', ['Jaded London', 'streetwear']),
   ]
 }
 
@@ -567,7 +601,7 @@ async function fetchReformationLiveProducts(): Promise<ProductGroup[]> {
   for (let start = 0, page = 0; page < maxPages; start += 100, page++) {
     const url = `${base}?cgid=clothing&start=${start}&sz=100`
     const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 10_000)
+    const timeout = setTimeout(() => controller.abort(), 45_000)
     const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: controller.signal })
     clearTimeout(timeout)
     if (!res.ok) break
@@ -821,6 +855,734 @@ async function fetchBrandyMelville(): Promise<ProductGroup[]> {
   return groups
 }
 
+async function fetchDairyBoy(): Promise<ProductGroup[]> {
+  const groups: ProductGroup[] = []
+  const seen = new Set<string>()
+  let page = 1
+
+  while (page <= 10) {
+    const url = `https://dairyboy.com/products.json?limit=250&page=${page}`
+    const headers = {
+      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+      'Accept': 'application/json',
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Accept-Encoding': 'gzip, deflate, br',
+      'Referer': 'https://dairyboy.com/',
+    }
+    try {
+      const data = await fetchWithCurl(url, headers)
+      if (!data) {
+        if (page === 1) return []
+        break
+      }
+      const products: any[] = data.products ?? []
+      if (!products.length) break
+
+      for (const p of products) {
+        const id = `dairyboy-${p.id}`
+        if (seen.has(id)) continue
+        seen.add(id)
+
+        const images: string[] = (p.images as any[] | undefined)?.map((img: any) => img.src) ?? []
+        const primaryImage = images[0] ?? ''
+        if (!primaryImage) continue
+
+        const variants: any[] = p.variants ?? []
+        const price = variants.length
+          ? Math.min(...variants.map((v: any) => normalizePrice(v.price)))
+          : 0
+        const productUrl = `https://dairyboy.com/products/${p.handle}`
+
+        const productOpts: any[] = p.options ?? []
+        const colorOptIndex = productOpts.findIndex((o: any) => /color|colour/i.test(o.name ?? ''))
+
+        let allColors: { name: string; hex: string; url: string; imageUrl: string }[] = []
+        if (variants.length > 0) {
+          const colorMap = new Map<string, { name: string; hex: string; url: string; imageUrl: string }>()
+          for (const variant of variants) {
+            let colorName = 'Default'
+
+            if (colorOptIndex >= 0) {
+              colorName = [variant.option1, variant.option2, variant.option3][colorOptIndex] || 'Default'
+            } else {
+              if (variant.option1 && !/^[a-z]{1,3}$/i.test(variant.option1.toLowerCase())) colorName = variant.option1
+              else if (variant.option2) colorName = variant.option2
+              else if (variant.option3) colorName = variant.option3
+            }
+
+            if (colorName && colorName !== 'Default' && !colorMap.has(colorName)) {
+              colorMap.set(colorName, {
+                name: colorName,
+                hex: colorNameToHex(colorName),
+                url: `${productUrl}?variant=${variant.id}`,
+                imageUrl: variant.featured_image?.src || primaryImage,
+              })
+            }
+          }
+          allColors = Array.from(colorMap.values())
+        }
+
+        if (allColors.length === 0) {
+          allColors = [{ name: 'Default', hex: colorNameToHex(p.title), url: productUrl, imageUrl: primaryImage }]
+        }
+
+        groups.push({
+          id,
+          name: p.title,
+          brand: 'Dairy Boy',
+          retailer: 'Dairy Boy',
+          price,
+          category: mapCategory(p.product_type),
+          primaryImageUrl: primaryImage,
+          allColorOptions: allColors,
+          sizes: [],
+          rating: 4.1,
+          reviewCount: 80,
+          tags: ['Dairy Boy'],
+        })
+      }
+
+      if (products.length < 250) break
+      page++
+      await SLEEP(200)
+    } catch {
+      if (page === 1) return []
+      break
+    }
+  }
+
+  return groups
+}
+
+async function fetchBoysLie(): Promise<ProductGroup[]> {
+  const groups: ProductGroup[] = []
+  const seen = new Set<string>()
+  let page = 1
+
+  while (page <= 10) {
+    const url = `https://boyslieofficial.com/products.json?limit=250&page=${page}`
+    const headers = {
+      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+      'Accept': 'application/json',
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Accept-Encoding': 'gzip, deflate, br',
+      'Referer': 'https://boyslieofficial.com/',
+    }
+    try {
+      const data = await fetchWithCurl(url, headers)
+      if (!data) {
+        if (page === 1) return []
+        break
+      }
+      const products: any[] = data.products ?? []
+      if (!products.length) break
+
+      for (const p of products) {
+        const id = `boyslie-${p.id}`
+        if (seen.has(id)) continue
+        seen.add(id)
+
+        const images: string[] = (p.images as any[] | undefined)?.map((img: any) => img.src) ?? []
+        const primaryImage = images[0] ?? ''
+        if (!primaryImage) continue
+
+        const variants: any[] = p.variants ?? []
+        const price = variants.length
+          ? Math.min(...variants.map((v: any) => normalizePrice(v.price)))
+          : 0
+        const productUrl = `https://boyslieofficial.com/products/${p.handle}`
+
+        const productOpts: any[] = p.options ?? []
+        const colorOptIndex = productOpts.findIndex((o: any) => /color|colour/i.test(o.name ?? ''))
+
+        let allColors: { name: string; hex: string; url: string; imageUrl: string }[] = []
+        if (variants.length > 0) {
+          const colorMap = new Map<string, { name: string; hex: string; url: string; imageUrl: string }>()
+          for (const variant of variants) {
+            let colorName = 'Default'
+
+            if (colorOptIndex >= 0) {
+              colorName = [variant.option1, variant.option2, variant.option3][colorOptIndex] || 'Default'
+            } else {
+              if (variant.option1 && !/^[a-z]{1,3}$/i.test(variant.option1.toLowerCase())) colorName = variant.option1
+              else if (variant.option2) colorName = variant.option2
+              else if (variant.option3) colorName = variant.option3
+            }
+
+            if (colorName && colorName !== 'Default' && !colorMap.has(colorName)) {
+              colorMap.set(colorName, {
+                name: colorName,
+                hex: colorNameToHex(colorName),
+                url: `${productUrl}?variant=${variant.id}`,
+                imageUrl: variant.featured_image?.src || primaryImage,
+              })
+            }
+          }
+          allColors = Array.from(colorMap.values())
+        }
+
+        if (allColors.length === 0) {
+          allColors = [{ name: 'Default', hex: colorNameToHex(p.title), url: productUrl, imageUrl: primaryImage }]
+        }
+
+        groups.push({
+          id,
+          name: p.title,
+          brand: 'Boys Lie',
+          retailer: 'Boys Lie',
+          price,
+          category: mapCategory(p.product_type),
+          primaryImageUrl: primaryImage,
+          allColorOptions: allColors,
+          sizes: [],
+          rating: 4.0,
+          reviewCount: 75,
+          tags: ['Boys Lie'],
+        })
+      }
+
+      if (products.length < 250) break
+      page++
+      await SLEEP(200)
+    } catch {
+      if (page === 1) return []
+      break
+    }
+  }
+
+  return groups
+}
+
+async function fetchAlo(): Promise<ProductGroup[]> {
+  const groups: ProductGroup[] = []
+  const seen = new Set<string>()
+  let page = 1
+
+  while (page <= 15) {
+    const url = `https://www.aloyoga.com/products.json?limit=250&page=${page}`
+    const headers = {
+      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+      'Accept': 'application/json',
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Accept-Encoding': 'gzip, deflate, br',
+      'Referer': 'https://www.aloyoga.com/',
+    }
+    try {
+      const data = await fetchWithCurl(url, headers)
+      if (!data) {
+        if (page === 1) return []
+        break
+      }
+      const products: any[] = data.products ?? []
+      if (!products.length) break
+
+      for (const p of products) {
+        const id = `alo-${p.id}`
+        if (seen.has(id)) continue
+        seen.add(id)
+
+        const images: string[] = (p.images as any[] | undefined)?.map((img: any) => img.src) ?? []
+        const primaryImage = images[0] ?? ''
+        if (!primaryImage) continue
+
+        const variants: any[] = p.variants ?? []
+        const price = variants.length
+          ? Math.min(...variants.map((v: any) => normalizePrice(v.price)))
+          : 0
+        const productUrl = `https://www.aloyoga.com/products/${p.handle}`
+
+        const productOpts: any[] = p.options ?? []
+        const colorOptIndex = productOpts.findIndex((o: any) => /color|colour/i.test(o.name ?? ''))
+
+        let allColors: { name: string; hex: string; url: string; imageUrl: string }[] = []
+        if (variants.length > 0) {
+          const colorMap = new Map<string, { name: string; hex: string; url: string; imageUrl: string }>()
+          for (const variant of variants) {
+            let colorName = 'Default'
+
+            if (colorOptIndex >= 0) {
+              colorName = [variant.option1, variant.option2, variant.option3][colorOptIndex] || 'Default'
+            } else {
+              if (variant.option1 && !/^[a-z]{1,3}$/i.test(variant.option1.toLowerCase())) colorName = variant.option1
+              else if (variant.option2) colorName = variant.option2
+              else if (variant.option3) colorName = variant.option3
+            }
+
+            if (colorName && colorName !== 'Default' && !colorMap.has(colorName)) {
+              colorMap.set(colorName, {
+                name: colorName,
+                hex: colorNameToHex(colorName),
+                url: `${productUrl}?variant=${variant.id}`,
+                imageUrl: variant.featured_image?.src || primaryImage,
+              })
+            }
+          }
+          allColors = Array.from(colorMap.values())
+        }
+
+        if (allColors.length === 0) {
+          allColors = [{ name: 'Default', hex: colorNameToHex(p.title), url: productUrl, imageUrl: primaryImage }]
+        }
+
+        groups.push({
+          id,
+          name: p.title,
+          brand: 'Alo',
+          retailer: 'Alo',
+          price,
+          category: mapCategory(p.product_type),
+          primaryImageUrl: primaryImage,
+          allColorOptions: allColors,
+          sizes: [],
+          rating: 4.4,
+          reviewCount: 95,
+          tags: ['Alo'],
+        })
+      }
+
+      if (products.length < 250) break
+      page++
+      await SLEEP(200)
+    } catch {
+      if (page === 1) return []
+      break
+    }
+  }
+
+  return groups
+}
+
+async function fetchLululemon(): Promise<ProductGroup[]> {
+  const groups: ProductGroup[] = []
+  const seen = new Set<string>()
+  let after = ''
+  let hasNextPage = true
+  let pageCount = 0
+
+  while (hasNextPage && pageCount < 10) {
+    const query = `
+      query GetProducts($first: Int!, $after: String) {
+        products(first: $first, after: $after) {
+          edges {
+            node {
+              id
+              title
+              handle
+              productType
+              images(first: 5) {
+                edges {
+                  node {
+                    url
+                  }
+                }
+              }
+              variants(first: 100) {
+                edges {
+                  node {
+                    id
+                    title
+                    color
+                    price
+                  }
+                }
+              }
+            }
+          }
+          pageInfo {
+            hasNextPage
+            endCursor
+          }
+        }
+      }
+    `
+
+    const payload = {
+      query: query.trim().replace(/\s+/g, ' '),
+      variables: {
+        first: 50,
+        after: after || null,
+      },
+    }
+
+    try {
+      const curlCmd = `curl -s -X POST https://shop.lululemon.com/api/graphql -H "Content-Type: application/json" -H "User-Agent: Mozilla/5.0" -d '${JSON.stringify(payload).replace(/'/g, "'\\''")}'`
+      const response = JSON.parse(execSync(curlCmd, { timeout: 30000, encoding: 'utf8' }))
+
+      if (response.errors) {
+        console.warn('[discover-lululemon] GraphQL error:', response.errors[0]?.message)
+        break
+      }
+
+      const productsData = response.data?.products
+      if (!productsData?.edges?.length) break
+
+      for (const edge of productsData.edges) {
+        const p = edge.node
+        const id = `lululemon-${p.id}`
+        if (seen.has(id)) continue
+        seen.add(id)
+
+        const images = p.images?.edges?.map((img: any) => img.node?.url).filter(Boolean) ?? []
+        const primaryImage = images[0] ?? ''
+        if (!primaryImage) continue
+
+        const variants = p.variants?.edges?.map((v: any) => v.node) ?? []
+        const price = variants.length
+          ? Math.min(...variants.map((v: any) => normalizePrice(v.price || '0')))
+          : 0
+
+        const productUrl = `https://shop.lululemon.com/p/${p.handle}`
+
+        let allColors: { name: string; hex: string; url: string; imageUrl: string }[] = []
+        if (variants.length > 0) {
+          const colorMap = new Map<string, { name: string; hex: string; url: string; imageUrl: string }>()
+          for (const variant of variants) {
+            const colorName = variant.color || variant.title || 'Default'
+            if (colorName && colorName !== 'Default' && !colorMap.has(colorName)) {
+              colorMap.set(colorName, {
+                name: colorName,
+                hex: colorNameToHex(colorName),
+                url: productUrl,
+                imageUrl: primaryImage,
+              })
+            }
+          }
+          allColors = Array.from(colorMap.values()).slice(0, 5)
+        }
+
+        if (allColors.length === 0) {
+          allColors = [{ name: 'Default', hex: colorNameToHex(p.title), url: productUrl, imageUrl: primaryImage }]
+        }
+
+        groups.push({
+          id,
+          name: p.title,
+          brand: 'Lululemon',
+          retailer: 'Lululemon',
+          price,
+          category: mapCategory(p.productType),
+          primaryImageUrl: primaryImage,
+          allColorOptions: allColors,
+          sizes: [],
+          rating: 4.5,
+          reviewCount: 120,
+          tags: ['Lululemon'],
+        })
+      }
+
+      hasNextPage = productsData.pageInfo?.hasNextPage ?? false
+      after = productsData.pageInfo?.endCursor ?? ''
+      pageCount++
+      await SLEEP(300)
+    } catch (err) {
+      console.error('[discover-lululemon] Fetch error:', (err as Error).message)
+      break
+    }
+  }
+
+  return groups
+}
+
+async function fetchOhPolly(): Promise<ProductGroup[]> {
+  const groups: ProductGroup[] = []
+  const seen = new Set<string>()
+  let page = 1
+
+  while (page <= 15) {
+    const url = `https://us.ohpolly.com/products.json?limit=250&page=${page}`
+    const headers = {
+      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+      'Accept': 'application/json',
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Accept-Encoding': 'gzip, deflate, br',
+      'Referer': 'https://us.ohpolly.com/',
+    }
+    try {
+      const data = await fetchWithCurl(url, headers)
+      if (!data) {
+        if (page === 1) return []
+        break
+      }
+      const products: any[] = data.products ?? []
+      if (!products.length) break
+
+      for (const p of products) {
+        const id = `ohpolly-${p.id}`
+        if (seen.has(id)) continue
+        seen.add(id)
+
+        const images: string[] = (p.images as any[] | undefined)?.map((img: any) => img.src) ?? []
+        const primaryImage = images[0] ?? ''
+        if (!primaryImage) continue
+
+        const variants: any[] = p.variants ?? []
+        const price = variants.length
+          ? Math.min(...variants.map((v: any) => normalizePrice(v.price)))
+          : 0
+        const productUrl = `https://us.ohpolly.com/products/${p.handle}`
+
+        const productOpts: any[] = p.options ?? []
+        const colorOptIndex = productOpts.findIndex((o: any) => /color|colour/i.test(o.name ?? ''))
+
+        let allColors: { name: string; hex: string; url: string; imageUrl: string }[] = []
+        if (variants.length > 0) {
+          const colorMap = new Map<string, { name: string; hex: string; url: string; imageUrl: string }>()
+          for (const variant of variants) {
+            let colorName = 'Default'
+
+            if (colorOptIndex >= 0) {
+              colorName = [variant.option1, variant.option2, variant.option3][colorOptIndex] || 'Default'
+            } else {
+              if (variant.option1 && !/^[a-z]{1,3}$/i.test(variant.option1.toLowerCase())) colorName = variant.option1
+              else if (variant.option2) colorName = variant.option2
+              else if (variant.option3) colorName = variant.option3
+            }
+
+            if (colorName && colorName !== 'Default' && !colorMap.has(colorName)) {
+              colorMap.set(colorName, {
+                name: colorName,
+                hex: colorNameToHex(colorName),
+                url: `${productUrl}?variant=${variant.id}`,
+                imageUrl: variant.featured_image?.src || primaryImage,
+              })
+            }
+          }
+          allColors = Array.from(colorMap.values())
+        }
+
+        if (allColors.length === 0) {
+          allColors = [{ name: 'Default', hex: colorNameToHex(p.title), url: productUrl, imageUrl: primaryImage }]
+        }
+
+        groups.push({
+          id,
+          name: p.title,
+          brand: 'Oh Polly',
+          retailer: 'Oh Polly',
+          price,
+          category: mapCategory(p.product_type),
+          subcategory: mapSubcategory(p.product_type || p.title, mapCategory(p.product_type)),
+          primaryImageUrl: primaryImage,
+          allColorOptions: allColors,
+          sizes: [],
+          rating: 4.2,
+          reviewCount: 90,
+          tags: ['Oh Polly'],
+        })
+      }
+
+      if (products.length < 250) break
+      page++
+      await SLEEP(200)
+    } catch {
+      if (page === 1) return []
+      break
+    }
+  }
+
+  return groups
+}
+
+async function fetchFrankiesBikinis(): Promise<ProductGroup[]> {
+  const groups: ProductGroup[] = []
+  const seen = new Set<string>()
+  let page = 1
+
+  while (page <= 15) {
+    const url = `https://frankiesbikinis.com/products.json?limit=250&page=${page}`
+    const headers = {
+      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+      'Accept': 'application/json',
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Accept-Encoding': 'gzip, deflate, br',
+      'Referer': 'https://frankiesbikinis.com/',
+    }
+    try {
+      const data = await fetchWithCurl(url, headers)
+      if (!data) {
+        if (page === 1) return []
+        break
+      }
+      const products: any[] = data.products ?? []
+      if (!products.length) break
+
+      for (const p of products) {
+        const id = `frankiesbikinis-${p.id}`
+        if (seen.has(id)) continue
+        seen.add(id)
+
+        const images: string[] = (p.images as any[] | undefined)?.map((img: any) => img.src) ?? []
+        const primaryImage = images[0] ?? ''
+        if (!primaryImage) continue
+
+        const variants: any[] = p.variants ?? []
+        const price = variants.length
+          ? Math.min(...variants.map((v: any) => normalizePrice(v.price)))
+          : 0
+        const productUrl = `https://frankiesbikinis.com/products/${p.handle}`
+
+        const productOpts: any[] = p.options ?? []
+        const colorOptIndex = productOpts.findIndex((o: any) => /color|colour/i.test(o.name ?? ''))
+
+        let allColors: { name: string; hex: string; url: string; imageUrl: string }[] = []
+        if (variants.length > 0) {
+          const colorMap = new Map<string, { name: string; hex: string; url: string; imageUrl: string }>()
+          for (const variant of variants) {
+            let colorName = 'Default'
+
+            if (colorOptIndex >= 0) {
+              colorName = [variant.option1, variant.option2, variant.option3][colorOptIndex] || 'Default'
+            } else {
+              if (variant.option1 && !/^[a-z]{1,3}$/i.test(variant.option1.toLowerCase())) colorName = variant.option1
+              else if (variant.option2) colorName = variant.option2
+              else if (variant.option3) colorName = variant.option3
+            }
+
+            if (colorName && colorName !== 'Default' && !colorMap.has(colorName)) {
+              colorMap.set(colorName, {
+                name: colorName,
+                hex: colorNameToHex(colorName),
+                url: `${productUrl}?variant=${variant.id}`,
+                imageUrl: variant.featured_image?.src || primaryImage,
+              })
+            }
+          }
+          allColors = Array.from(colorMap.values())
+        }
+
+        if (allColors.length === 0) {
+          allColors = [{ name: 'Default', hex: colorNameToHex(p.title), url: productUrl, imageUrl: primaryImage }]
+        }
+
+        groups.push({
+          id,
+          name: p.title,
+          brand: 'Frankies Bikinis',
+          retailer: 'Frankies Bikinis',
+          price,
+          category: mapCategory(p.product_type),
+          subcategory: mapSubcategory(p.product_type || p.title, mapCategory(p.product_type)),
+          primaryImageUrl: primaryImage,
+          allColorOptions: allColors,
+          sizes: [],
+          rating: 4.3,
+          reviewCount: 85,
+          tags: ['Frankies Bikinis'],
+        })
+      }
+
+      if (products.length < 250) break
+      page++
+      await SLEEP(200)
+    } catch {
+      if (page === 1) return []
+      break
+    }
+  }
+
+  return groups
+}
+
+async function fetchJadedLondon(): Promise<ProductGroup[]> {
+  const groups: ProductGroup[] = []
+  const seen = new Set<string>()
+  let page = 1
+
+  while (page <= 15) {
+    const url = `https://jadedldn.com/products.json?limit=250&page=${page}`
+    const headers = {
+      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+      'Accept': 'application/json',
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Accept-Encoding': 'gzip, deflate, br',
+      'Referer': 'https://jadedldn.com/',
+    }
+    try {
+      const data = await fetchWithCurl(url, headers)
+      if (!data) {
+        if (page === 1) return []
+        break
+      }
+      const products: any[] = data.products ?? []
+      if (!products.length) break
+
+      for (const p of products) {
+        const id = `jadedldn-${p.id}`
+        if (seen.has(id)) continue
+        seen.add(id)
+
+        const images: string[] = (p.images as any[] | undefined)?.map((img: any) => img.src) ?? []
+        const primaryImage = images[0] ?? ''
+        if (!primaryImage) continue
+
+        const variants: any[] = p.variants ?? []
+        const price = variants.length
+          ? Math.min(...variants.map((v: any) => normalizePrice(v.price)))
+          : 0
+        const productUrl = `https://jadedldn.com/products/${p.handle}`
+
+        const productOpts: any[] = p.options ?? []
+        const colorOptIndex = productOpts.findIndex((o: any) => /color|colour/i.test(o.name ?? ''))
+
+        let allColors: { name: string; hex: string; url: string; imageUrl: string }[] = []
+        if (variants.length > 0) {
+          const colorMap = new Map<string, { name: string; hex: string; url: string; imageUrl: string }>()
+          for (const variant of variants) {
+            let colorName = 'Default'
+
+            if (colorOptIndex >= 0) {
+              colorName = [variant.option1, variant.option2, variant.option3][colorOptIndex] || 'Default'
+            } else {
+              if (variant.option1 && !/^[a-z]{1,3}$/i.test(variant.option1.toLowerCase())) colorName = variant.option1
+              else if (variant.option2) colorName = variant.option2
+              else if (variant.option3) colorName = variant.option3
+            }
+
+            if (colorName && colorName !== 'Default' && !colorMap.has(colorName)) {
+              colorMap.set(colorName, {
+                name: colorName,
+                hex: colorNameToHex(colorName),
+                url: `${productUrl}?variant=${variant.id}`,
+                imageUrl: variant.featured_image?.src || primaryImage,
+              })
+            }
+          }
+          allColors = Array.from(colorMap.values())
+        }
+
+        if (allColors.length === 0) {
+          allColors = [{ name: 'Default', hex: colorNameToHex(p.title), url: productUrl, imageUrl: primaryImage }]
+        }
+
+        groups.push({
+          id,
+          name: p.title,
+          brand: 'Jaded London',
+          retailer: 'Jaded London',
+          price,
+          category: mapCategory(p.product_type),
+          subcategory: mapSubcategory(p.product_type || p.title, mapCategory(p.product_type)),
+          primaryImageUrl: primaryImage,
+          allColorOptions: allColors,
+          sizes: [],
+          rating: 4.1,
+          reviewCount: 88,
+          tags: ['Jaded London'],
+        })
+      }
+
+      if (products.length < 250) break
+      page++
+      await SLEEP(200)
+    } catch {
+      if (page === 1) return []
+      break
+    }
+  }
+
+  return groups
+}
+
 async function fetchUNIQLO(): Promise<ProductGroup[]> {
   const groups: ProductGroup[] = []
   const seen = new Set<string>()
@@ -842,7 +1604,7 @@ async function fetchUNIQLO(): Promise<ProductGroup[]> {
 
       const res = await fetch(url.toString(), {
         headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36' },
-        signal: AbortSignal.timeout(30000),
+        signal: AbortSignal.timeout(60_000),
       })
       if (!res.ok) break
 
@@ -991,7 +1753,6 @@ function getAllGroups(): ProductGroup[] {
   console.log('[discover] Cold start — loading static catalogs…')
   const t = Date.now()
   _allGroups = [
-    ...loadReliableFallbackCatalog(),
     ...loadAritziaStatic(),
     ...loadPPStatic(),
     ...loadReformationStatic(),
@@ -1008,7 +1769,7 @@ async function triggerLiveRefresh(): Promise<void> {
   console.log('[discover] Starting live product refresh…')
   const t = Date.now()
 
-  const [reformationRes, aritziaRes, ppRes, ediktedRes, bmRes, uniqloRes, anfRes] = await Promise.allSettled([
+  const [reformationRes, aritziaRes, ppRes, ediktedRes, bmRes, uniqloRes, anfRes, dairyBoyRes, boysLieRes, aloRes, ohPollyRes, frankiesBikinisRes, jadedLondonRes] = await Promise.allSettled([
     fetchReformationLiveProducts(),
     fetchAritziaAlgolia(),
     fetchShopifyAll('https://us.princesspolly.com', 'Princess Polly', 'Princess Polly', 4.3),
@@ -1016,6 +1777,12 @@ async function triggerLiveRefresh(): Promise<void> {
     fetchBrandyMelville(),
     fetchUNIQLO(),
     fetchAbercrombieAndFitch(),
+    fetchDairyBoy(),
+    fetchBoysLie(),
+    fetchAlo(),
+    fetchOhPolly(),
+    fetchFrankiesBikinis(),
+    fetchJadedLondon(),
   ])
 
   const newGroups: ProductGroup[] = []
@@ -1069,8 +1836,55 @@ async function triggerLiveRefresh(): Promise<void> {
     console.error('[discover] Abercrombie & Fitch fetch failed:', anfRes.reason?.message)
   }
 
+  if (dairyBoyRes.status === 'fulfilled') {
+    newGroups.push(...dairyBoyRes.value)
+    console.log(`[discover] Dairy Boy live: ${dairyBoyRes.value.length} products`)
+  } else {
+    console.error('[discover] Dairy Boy fetch failed:', dairyBoyRes.reason?.message)
+  }
+
+  if (boysLieRes.status === 'fulfilled') {
+    newGroups.push(...boysLieRes.value)
+    console.log(`[discover] Boys Lie live: ${boysLieRes.value.length} products`)
+  } else {
+    console.error('[discover] Boys Lie fetch failed:', boysLieRes.reason?.message)
+  }
+
+  if (aloRes.status === 'fulfilled') {
+    newGroups.push(...aloRes.value)
+    console.log(`[discover] Alo live: ${aloRes.value.length} products`)
+  } else {
+    console.error('[discover] Alo fetch failed:', aloRes.reason?.message)
+  }
+
+  if (ohPollyRes.status === 'fulfilled') {
+    newGroups.push(...ohPollyRes.value)
+    console.log(`[discover] Oh Polly live: ${ohPollyRes.value.length} products`)
+  } else {
+    console.error('[discover] Oh Polly fetch failed:', ohPollyRes.reason?.message)
+  }
+
+  if (frankiesBikinisRes.status === 'fulfilled') {
+    newGroups.push(...frankiesBikinisRes.value)
+    console.log(`[discover] Frankies Bikinis live: ${frankiesBikinisRes.value.length} products`)
+  } else {
+    console.error('[discover] Frankies Bikinis fetch failed:', frankiesBikinisRes.reason?.message)
+  }
+
+  if (jadedLondonRes.status === 'fulfilled') {
+    newGroups.push(...jadedLondonRes.value)
+    console.log(`[discover] Jaded London live: ${jadedLondonRes.value.length} products`)
+  } else {
+    console.error('[discover] Jaded London fetch failed:', jadedLondonRes.reason?.message)
+  }
+
   if (newGroups.length > 0) {
-    _allGroups = [...loadReliableFallbackCatalog(), ...newGroups]
+    _allGroups = [
+      ...loadAritziaStatic(),
+      ...loadPPStatic(),
+      ...loadReformationStatic(),
+      ...newGroups,
+    ]
     _dataSource = 'live'
     _lastRefreshed = new Date()
     resultCache.clear()
@@ -1116,15 +1930,64 @@ interface CacheEntry { products: Product[]; ts: number }
 const resultCache = new Map<string, CacheEntry>()
 const CACHE_TTL = 5 * 60 * 1000
 
+async function getLiveGroupsForRetailers(retailersFilter: string[]): Promise<ProductGroup[]> {
+  const requested = retailersFilter.map((item) => item.toLowerCase()).filter(Boolean)
+  if (!requested.length) return getAllGroups()
+
+  const fetchers = new Map<string, () => Promise<ProductGroup[]>>([
+    ['aritzia', fetchAritziaAlgolia],
+    ['princess polly', () => fetchShopifyAll('https://us.princesspolly.com', 'Princess Polly', 'Princess Polly', 4.3)],
+    ['reformation', fetchReformationLiveProducts],
+    ['edikted', () => fetchShopifyAll('https://edikted.com', 'Edikted', 'Edikted', 4.1)],
+    ['brandy melville', fetchBrandyMelville],
+    ['uniqlo', fetchUNIQLO],
+    ['dairy boy', fetchDairyBoy],
+    ['boys lie', fetchBoysLie],
+    ['alo', fetchAlo],
+    ['oh polly', fetchOhPolly],
+    ['frankies bikinis', fetchFrankiesBikinis],
+    ['jaded london', fetchJadedLondon],
+    ['abercrombie & fitch', fetchAbercrombieAndFitch],
+  ])
+
+  const results = await Promise.allSettled(requested.map((name) => fetchers.get(name)?.() ?? Promise.resolve([])))
+  const groups: ProductGroup[] = []
+
+  for (const [index, result] of results.entries()) {
+    const retailer = requested[index]
+    if (result.status === 'fulfilled' && result.value.length > 0) {
+      groups.push(...result.value)
+      continue
+    }
+
+    if (retailer === 'aritzia') groups.push(...loadAritziaStatic())
+    if (retailer === 'princess polly') groups.push(...loadPPStatic())
+    if (retailer === 'reformation') groups.push(...loadReformationStatic())
+  }
+
+  return groups
+}
+
 function getCachedResult(key: string): Product[] | null {
   const entry = resultCache.get(key)
   if (!entry || Date.now() - entry.ts > CACHE_TTL) { resultCache.delete(key); return null }
   return entry.products
 }
 
-function buildResult(paletteHexes: string[], catFilter: string, searchQ: string): Product[] {
+function normalizeRetailerName(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, ' ')
+}
+
+function buildResult(
+  paletteHexes: string[],
+  catFilter: string,
+  searchQ: string,
+  priceMin?: number,
+  priceMax?: number,
+  retailersFilter: string[] = [],
+  groups: ProductGroup[] = getAllGroups()
+): Product[] {
   const hasPalette = paletteHexes.length > 0
-  const groups = getAllGroups()
 
   // Pre-compute deltaE for each unique hex vs palette (avoids redundant math)
   const hexScoreCache = new Map<string, number>()
@@ -1143,13 +2006,18 @@ function buildResult(paletteHexes: string[], catFilter: string, searchQ: string)
 
   const scored: Scored[] = []
 
+  const normalizedRetailers = retailersFilter.map(normalizeRetailerName).filter(Boolean)
+
   for (const g of groups) {
     if (catFilter && catFilter !== 'all' && g.category !== catFilter) continue
+    if (normalizedRetailers.length > 0 && !normalizedRetailers.includes(normalizeRetailerName(g.retailer))) continue
     if (searchQ) {
       const q = searchQ.toLowerCase()
       if (!g.name.toLowerCase().includes(q) && !g.retailer.toLowerCase().includes(q) &&
           !g.tags.some((t) => t.toLowerCase().includes(q))) continue
     }
+    if (priceMin !== undefined && g.price < priceMin) continue
+    if (priceMax !== undefined && g.price > priceMax) continue
 
     let matchingColors: ColorOption[]
     let bestScore = 50
@@ -1218,6 +2086,7 @@ function buildResult(paletteHexes: string[], catFilter: string, searchQ: string)
       price: normalizePrice(g.price),
       originalPrice: g.originalPrice,
       category: g.category,
+      subcategory: g.subcategory || mapSubcategory(g.name, g.category),
       imageUrl: primaryImage,
       hexColors: matchingColors.map((c) => c.hex),
       sizes: g.sizes,
@@ -1233,6 +2102,25 @@ function buildResult(paletteHexes: string[], catFilter: string, searchQ: string)
 }
 
 // ── Color Interleaving for Variety ────────────────────────────────────────────
+
+function mulberry32(seed: number) {
+  return function () {
+    let t = seed += 0x6D2B79F5
+    t = Math.imul(t ^ t >>> 15, t | 1)
+    t ^= t + Math.imul(t ^ t >>> 7, t | 61)
+    return ((t ^ t >>> 14) >>> 0) / 4294967296
+  }
+}
+
+function shuffleWithSeed<T>(items: T[], seed: number): T[] {
+  const copy = [...items]
+  const random = mulberry32(seed || Date.now())
+  for (let i = copy.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(random() * (i + 1))
+    ;[copy[i], copy[j]] = [copy[j], copy[i]]
+  }
+  return copy
+}
 
 function interleavedByColor(products: Product[]): Product[] {
   if (products.length === 0) return products
@@ -1282,7 +2170,7 @@ router.get('/status', (_req: Request, res: Response) => {
 })
 
 router.get('/', async (req: Request, res: Response) => {
-  const { palette, category, search, page, limit, sort } = req.query
+  const { palette, category, search, page, limit, sort, priceMin, priceMax, retailers, seed } = req.query
 
   const paletteHexes: string[] = palette
     ? String(palette).split(',').map((h) => h.trim()).filter(Boolean)
@@ -1292,21 +2180,30 @@ router.get('/', async (req: Request, res: Response) => {
   const sortBy = String(sort ?? 'match')
   const pageNum = Math.max(0, parseInt(String(page ?? '0'), 10) || 0)
   const pageSize = Math.min(100, Math.max(10, parseInt(String(limit ?? '50'), 10) || 50))
+  const minPrice = priceMin ? parseInt(String(priceMin), 10) : undefined
+  const randomSeed = Math.max(1, parseInt(String(seed ?? Date.now()), 10) || Date.now())
+  const maxPrice = priceMax ? parseInt(String(priceMax), 10) : undefined
 
-  const cacheKey = `${paletteHexes.join(',')}|${catFilter}|${searchQ}|${sortBy}`
+  const retailerList = String(retailers ?? '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean)
+
+  const cacheKey = `${paletteHexes.join(',')}|${catFilter}|${searchQ}|${sortBy}|${minPrice ?? ''}|${maxPrice ?? ''}|${retailerList.join('~')}|seed=${randomSeed}`
   let products = getCachedResult(cacheKey)
   if (!products) {
-    if ((!_allGroups || _allGroups.length === 0) && !_refreshing) {
-      await triggerLiveRefresh()
-    }
-    let result = buildResult(paletteHexes, catFilter, searchQ)
+    const groups = retailerList.length > 0
+      ? await getLiveGroupsForRetailers(retailerList)
+      : getAllGroups()
+
+    let result = buildResult(paletteHexes, catFilter, searchQ, minPrice, maxPrice, retailerList, groups)
 
     // Apply server-side sorting with color variety for best match
     if (sortBy === 'match' && paletteHexes.length > 0) {
       result = interleavedByColor(result)
     }
 
-    products = result
+    products = shuffleWithSeed(result, randomSeed)
     resultCache.set(cacheKey, { products, ts: Date.now() })
   }
 

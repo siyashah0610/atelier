@@ -73,7 +73,15 @@ export interface UserProfile {
   favoriteRetailers: string[]
 }
 
-export type ProductCategory = 'clothing' | 'shoes' | 'jewelry' | 'bags' | 'makeup'
+export type ProductCategory = 'clothing' | 'shoes' | 'jewelry' | 'bags' | 'makeup' | 'all'
+
+export type ClothingSubcategory = 'tops' | 'bottoms' | 'dresses' | 'outerwear' | 'activewear'
+export type BottomsSubcategory = 'pants' | 'shorts' | 'leggings' | 'skirts' | 'jeans'
+export type ShoeSubcategory = 'sneakers' | 'heels' | 'flats' | 'boots' | 'sandals'
+export type JewelrySubcategory = 'necklaces' | 'bracelets' | 'earrings' | 'rings' | 'anklets'
+export type BagSubcategory = 'crossbody' | 'tote' | 'backpack' | 'clutch' | 'shoulder'
+
+export type ProductSubcategory = ClothingSubcategory | BottomsSubcategory | ShoeSubcategory | JewelrySubcategory | BagSubcategory
 
 export interface ColorOption {
   name: string
