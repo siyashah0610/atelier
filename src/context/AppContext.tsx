@@ -15,7 +15,7 @@ interface AppState {
   initialized: boolean
   dataLoading: boolean
   setCurrentPage: (page: Page) => void
-  setUserProfile: (profile: UserProfile) => void
+  setUserProfile: (profile: UserProfile) => Promise<void>
   setSelectedProduct: (product: Product | null) => void
   saveProduct: (product: Product) => void
   unsaveProduct: (productId: string) => void
@@ -32,7 +32,7 @@ interface AppState {
   toggleWishListVisibility: (wishListId: string) => void
   renameWishList: (wishListId: string, name: string) => void
   updateRetailers: (retailers: string[]) => void
-  saveAnalysis: (analysis: SavedAnalysis) => void
+  saveAnalysis: (analysis: SavedAnalysis) => Promise<void>
   deleteAnalysis: (id: string) => void
   toggleFavoriteAnalysis: (id: string) => void
   saveFaceAnalysis: (analysis: FaceAnalysis) => void
@@ -196,6 +196,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
       if (profileRes.data) {
         const p = profileRes.data
+        console.log('Loaded profile from Supabase:', {
+          id: p.id,
+          hasPalette: !!p.palette,
+          paletteSeasonType: p.palette?.seasonalType,
+          palette: p.palette
+        })
         setUserProfileState({
           id: userId,
           name: p.name || '',
@@ -205,7 +211,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           faceAnalysis: p.face_analysis ?? undefined,
           favoriteRetailers: p.favorite_retailers ?? [],
         })
-        setCurrentPageState(p.palette ? 'feed' : 'onboarding')
+        const pageToSet = p.palette ? 'feed' : 'onboarding'
+        console.log('Setting current page to:', pageToSet)
+        setCurrentPageState(pageToSet)
       } else {
         // Create default profile if it doesn't exist
         const defaultProfile: UserProfile = {
@@ -225,8 +233,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           body_profile: null,
           face_analysis: null,
           favorite_retailers: [],
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
         }).then(() => {}, (err) => console.error('Failed to create profile:', err))
       }
 
@@ -276,31 +282,40 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const setCurrentPage = (page: Page) => setCurrentPageState(page)
 
-  const setUserProfile = useCallback((profile: UserProfile) => {
+  const setUserProfile = useCallback(async (profile: UserProfile) => {
     setUserProfileState(profile)
     const uid = userRef.current?.id
-    if (!uid) return
-    supabase.from('profiles').upsert({
-      id: uid, name: profile.name, username: profile.username,
-      palette: profile.palette ?? null, body_profile: profile.bodyProfile ?? null,
-      face_analysis: profile.faceAnalysis ?? null,
-      favorite_retailers: profile.favoriteRetailers ?? [],
-      updated_at: new Date().toISOString(),
-    })
+    if (!uid) {
+      console.warn('Cannot save profile: no user ID')
+      return
+    }
+    try {
+      const { error } = await supabase.from('profiles').upsert({
+        id: uid, name: profile.name, username: profile.username,
+        palette: profile.palette ?? null, body_profile: profile.bodyProfile ?? null,
+        face_analysis: profile.faceAnalysis ?? null,
+        favorite_retailers: profile.favoriteRetailers ?? [],
+      })
+      if (error) {
+        console.error('Error saving profile:', error.message)
+      }
+    } catch (err) {
+      console.error('Exception saving profile:', err)
+    }
   }, [])
 
   const updateRetailers = useCallback((retailers: string[]) => {
     setUserProfileState((prev) => prev ? { ...prev, favoriteRetailers: retailers } : prev)
     const uid = userRef.current?.id
     if (!uid) return
-    supabase.from('profiles').update({ favorite_retailers: retailers, updated_at: new Date().toISOString() }).eq('id', uid)
+    supabase.from('profiles').update({ favorite_retailers: retailers }).eq('id', uid)
   }, [])
 
   const saveFaceAnalysis = useCallback((analysis: FaceAnalysis) => {
     setUserProfileState((prev) => prev ? { ...prev, faceAnalysis: analysis } : prev)
     const uid = userRef.current?.id
     if (!uid) return
-    supabase.from('profiles').update({ face_analysis: analysis, updated_at: new Date().toISOString() }).eq('id', uid)
+    supabase.from('profiles').update({ face_analysis: analysis }).eq('id', uid)
   }, [])
 
   // ─── Saved products ───────────────────────────────────────────────────────
@@ -525,12 +540,38 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   // ─── Analyses ─────────────────────────────────────────────────────────────
 
-  const saveAnalysis = useCallback((analysis: SavedAnalysis) => {
+  const saveAnalysis = useCallback((analysis: SavedAnalysis): Promise<void> => {
+    console.log('saveAnalysis called with:', {
+      analysisId: analysis.id,
+      productName: analysis.productName,
+      storeName: analysis.storeName
+    })
     setAnalyses((prev) => [analysis, ...prev])
     const uid = userRef.current?.id
-    if (uid) {
-      supabase.from('analyses').insert({ id: analysis.id, user_id: uid, data: analysis, created_at: analysis.savedAt })
+    console.log('User ID:', uid)
+    if (!uid) {
+      console.warn('Cannot save analysis: user not authenticated')
+      return Promise.reject(new Error('User not authenticated'))
     }
+    return new Promise((resolve, reject) => {
+      supabase.from('analyses').insert({
+        id: analysis.id,
+        user_id: uid,
+        data: analysis,
+        created_at: analysis.savedAt
+      }).then((result: any) => {
+        if (result.error) {
+          console.error('Failed to save analysis:', result.error.message)
+          reject(result.error)
+        } else {
+          console.log('Analysis saved successfully:', analysis.id)
+          resolve()
+        }
+      }, (err: any) => {
+        console.error('Error saving analysis:', err)
+        reject(err)
+      })
+    })
   }, [])
 
   const deleteAnalysis = useCallback((id: string) => {

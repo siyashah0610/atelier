@@ -55,7 +55,7 @@ If the photo doesn't clearly show a face, set faceShape to "oval" and confidence
 
   try {
     const message = await client.messages.create({
-      model: 'claude-opus-4-7',
+      model: 'claude-sonnet-4-6',
       max_tokens: 1200,
       messages: [{
         role: 'user',

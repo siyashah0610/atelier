@@ -11,6 +11,47 @@ const IMAGE_EXT_RE = /\.(jpe?g|png|webp|gif)(\?.*)?$/i
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+function extractRetailerFromUrl(url: string | null | undefined): string {
+  if (!url) return 'Unknown Store'
+  try {
+    const urlObj = new URL(url)
+    const hostname = urlObj.hostname.toLowerCase()
+    const retailerMap: Record<string, string> = {
+      'sephora.com': 'Sephora',
+      'ulta.com': 'Ulta Beauty',
+      'amazon.com': 'Amazon',
+      'shopify.com': 'Shopify',
+      'etsy.com': 'Etsy',
+      'zara.com': 'Zara',
+      'hm.com': 'H&M',
+      'forever21.com': 'Forever 21',
+      'aritzia.com': 'Aritzia',
+      'uniqlo.com': 'Uniqlo',
+      'gap.com': 'Gap',
+      'mango.com': 'Mango',
+      'brandy-melville.com': 'Brandy Melville',
+      'brandymelville.com': 'Brandy Melville',
+      'shein.com': 'Shein',
+      'target.com': 'Target',
+      'walmart.com': 'Walmart',
+      'nordstrom.com': 'Nordstrom',
+      'asos.com': 'ASOS',
+      'revolve.com': 'Revolve',
+    }
+    for (const [domain, name] of Object.entries(retailerMap)) {
+      if (hostname === domain || hostname.endsWith('.' + domain)) return name
+    }
+    const parts = hostname.split('.')
+    if (parts.length >= 2) {
+      const domainName = parts[parts.length - 2]
+      return domainName.charAt(0).toUpperCase() + domainName.slice(1)
+    }
+    return 'Unknown Store'
+  } catch {
+    return 'Unknown Store'
+  }
+}
+
 function isDirectImageUrl(url: string): boolean {
   try { 
     const u = new URL(url)
@@ -123,6 +164,7 @@ export async function scrapeProduct(pageUrl: string): Promise<ScrapedProduct | n
     try {
       const browser = await puppeteer.launch({ headless: true })
       const page = await browser.newPage()
+      await page.evaluateOnNewDocument(() => { (window as any).__name = (f: any, n: any) => Object.defineProperty(f, 'name', { value: n || f?.name, configurable: true }); });
       await page.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36')
       await page.goto(pageUrl, { waitUntil: 'domcontentloaded', timeout: 15_000 })
       // Give SPA frameworks a moment to inject content
@@ -1027,7 +1069,7 @@ router.post('/', async (req: Request, res: Response) => {
 
   try {
     const message = await client.messages.create({
-      model: 'claude-opus-4-7',
+      model: 'claude-sonnet-4-6',
       max_tokens: 3200,
       messages: [{
         role: 'user',
@@ -1117,7 +1159,8 @@ router.post('/', async (req: Request, res: Response) => {
       if (Array.isArray(result.topColorPicks)) result.topColorPicks.forEach(applySizeGeneric)
     }
 
-    res.json({ ...result, productImageUrl, productUrl, productPrice: productMeta.price ?? null })
+    const retailer = extractRetailerFromUrl(productUrl)
+    res.json({ ...result, productImageUrl, productUrl, productPrice: productMeta.price ?? null, retailer })
   } catch (err) {
     console.error('[product-check]', err)
     res.status(500).json({ error: 'Analysis failed. Please try again.' })

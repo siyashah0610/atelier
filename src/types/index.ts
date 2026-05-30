@@ -216,3 +216,42 @@ export interface SavedAnalysis {
     }>
   }
 }
+
+export interface AnalysisResult {
+  productName: string
+  productBrand: string
+  productCategory: string
+  productPrice: number | null
+  colorScore: number
+  bodyTypeScore: number | null
+  colorVerdict: string
+  bodyTypeVerdict: string | null
+  colorReasoning: string
+  fitReasoning: string | null
+  suggestedStyling: string | null
+  recommendedSize: string | null
+  sizeReasoning: string | null
+  topColorPicks: Array<{
+    name: string
+    hex: string
+    matchScore: number
+    verdict: string
+    reasoning: string
+    url: string | null
+    imageUrl: string | null
+  }>
+  allOptions: Array<{
+    name: string
+    hex: string
+    url: string | null
+    imageUrl: string | null
+    matchScore: number
+    verdict: string
+    colorReasoning: string
+    fitReasoning: string | null
+  }>
+  overallRecommendation: string
+  productImageUrl: string | null
+  productUrl: string | null
+  retailer: string
+}

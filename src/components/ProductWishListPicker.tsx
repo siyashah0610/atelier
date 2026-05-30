@@ -1,21 +1,24 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { Product, WishList } from '../types'
+import { Product, WishList, SavedAnalysis } from '../types'
 import { useApp } from '../context/AppContext'
 
 interface Props {
-  product: Product
+  product?: Product
+  analysis?: SavedAnalysis
   onClose: () => void
   onAdded?: () => void
   triggerRef?: React.RefObject<HTMLButtonElement>
 }
 
-export default function ProductWishListPicker({ product, onClose, onAdded, triggerRef }: Props) {
-  const { wishLists, createWishList, addProductToWishList } = useApp()
+export default function ProductWishListPicker({ product, analysis, onClose, onAdded, triggerRef }: Props) {
+  const { wishLists, createWishList, addProductToWishList, addToWishList } = useApp()
   const [newListName, setNewListName] = useState('')
   const [creating, setCreating] = useState(false)
-  const [selectedColor, setSelectedColor] = useState<{ name: string; hex: string; matchScore: number; url: string; imageUrl: string } | null>(
-    product.colorOptions?.[0] ?? null
+
+  const colorOptions = product?.colorOptions || (analysis?.fullAnalysis?.allOptions || analysis?.topColorPicks || [])
+  const [selectedColor, setSelectedColor] = useState<{ name: string; hex: string; matchScore: number; url: string | null; imageUrl: string | null } | null>(
+    colorOptions?.[0] ?? null
   )
   const [addedTo, setAddedTo] = useState<Set<string>>(new Set())
   const ref = useRef<HTMLDivElement>(null)
@@ -58,7 +61,12 @@ export default function ProductWishListPicker({ product, onClose, onAdded, trigg
           verdict: `Matches your palette at ${selectedColor.matchScore}%`,
         }
       : null
-    addProductToWishList(list.id, product, chosenColor)
+
+    if (product) {
+      addProductToWishList(list.id, product, chosenColor)
+    } else if (analysis) {
+      addToWishList(list.id, analysis, chosenColor)
+    }
     setAddedTo((prev) => new Set([...prev, list.id]))
     onAdded?.()
   }
@@ -76,7 +84,12 @@ export default function ProductWishListPicker({ product, onClose, onAdded, trigg
           verdict: `Matches your palette at ${selectedColor.matchScore}%`,
         }
       : null
-    addProductToWishList(list.id, product, chosenColor)
+
+    if (product) {
+      addProductToWishList(list.id, product, chosenColor)
+    } else if (analysis) {
+      addToWishList(list.id, analysis, chosenColor)
+    }
     setAddedTo((prev) => new Set([...prev, list.id]))
     setNewListName('')
     setCreating(false)
@@ -94,11 +107,11 @@ export default function ProductWishListPicker({ product, onClose, onAdded, trigg
     >
       <div className="px-4 pt-4 pb-3 border-b border-stone-100">
         <p className="text-xs font-semibold text-stone-900">Add to Wish List</p>
-        {product.colorOptions && product.colorOptions.length > 1 && (
+        {colorOptions && colorOptions.length > 1 && (
           <div className="mt-2">
             <p className="text-[10px] text-stone-400 mb-1.5">Choose a color:</p>
             <div className="flex gap-1.5 flex-wrap">
-              {product.colorOptions.map((opt) => (
+              {colorOptions.map((opt) => (
                 <button
                   key={opt.name}
                   onClick={() => setSelectedColor(opt)}

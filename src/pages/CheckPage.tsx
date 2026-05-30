@@ -1,60 +1,15 @@
 import React, { useState, useRef } from 'react'
 import { useApp } from '../context/AppContext'
 import { resizeImageToBase64 } from '../utils/colorUtils'
+import AnalysisCard from '../components/AnalysisCard'
+import AnalysisResultPanel from '../components/AnalysisResultPanel'
+import { AnalysisResult, Product, ProductCategory } from '../types'
 
 type Tab = 'upload' | 'history'
 type InputMode = 'photo' | 'link'
-type Verdict = 'perfect' | 'great' | 'good' | 'fair' | 'skip'
-
-interface AnalysisResult {
-  productName: string
-  productBrand: string
-  productCategory: string
-  productPrice: number | null
-  colorScore: number
-  bodyTypeScore: number | null
-  colorVerdict: Verdict
-  bodyTypeVerdict: Verdict | null
-  colorReasoning: string
-  fitReasoning: string | null
-  suggestedStyling: string | null
-  recommendedSize: string | null
-  sizeReasoning: string | null
-  topColorPicks: Array<{
-    name: string; hex: string; matchScore: number; verdict: Verdict
-    reasoning: string; url: string | null; imageUrl: string | null
-  }>
-  allOptions: Array<{
-    name: string; hex: string; url: string | null; imageUrl: string | null
-    matchScore: number; verdict: Verdict; colorReasoning: string; fitReasoning: string | null
-  }>
-  overallRecommendation: string
-  productImageUrl: string | null
-  productUrl: string | null
-}
-
-const VERDICT = {
-  perfect: { emoji: '✦', label: 'Perfect', pill: 'bg-emerald-600 text-white', bar: '#059669' },
-  great: { emoji: '✓', label: 'Great', pill: 'bg-green-500 text-white', bar: '#22C55E' },
-  good: { emoji: '~', label: 'Good', pill: 'bg-amber-500 text-white', bar: '#F59E0B' },
-  fair: { emoji: '!', label: 'Fair', pill: 'bg-orange-500 text-white', bar: '#F97316' },
-  skip: { emoji: '✕', label: 'Skip', pill: 'bg-red-500 text-white', bar: '#EF4444' },
-}
-
-function ScoreBar({ score, color }: { score: number; color: string }) {
-  return (
-    <div className="h-1.5 bg-stone-100 rounded-full overflow-hidden flex-1">
-      <div className="h-full rounded-full transition-all duration-500" style={{ width: `${score}%`, backgroundColor: color }} />
-    </div>
-  )
-}
-
-function verdictData(v: Verdict) {
-  return VERDICT[v]
-}
 
 export default function CheckPage() {
-  const { userProfile, saveAnalysis, analyses, deleteAnalysis, toggleFavoriteAnalysis } = useApp()
+  const { userProfile, saveAnalysis, analyses, deleteAnalysis, toggleFavoriteAnalysis, addToCart } = useApp()
   const [activeTab, setActiveTab] = useState<Tab>('upload')
   const [mode, setMode] = useState<InputMode>('photo')
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
@@ -63,6 +18,36 @@ export default function CheckPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<AnalysisResult | null>(null)
+  const [showPicker, setShowPicker] = useState(false)
+  const pickerRef = useRef<HTMLButtonElement>(null)
+  const [addedToCart, setAddedToCart] = useState(false)
+
+  const getTempProduct = (): Product | null => {
+    if (!result) return null
+    return {
+      id: `analyzed-${Date.now()}`,
+      name: result.productName,
+      brand: result.productBrand,
+      retailer: result.retailer || 'Unknown Store',
+      price: result.productPrice || 0,
+      category: (result.productCategory as ProductCategory) || 'clothing',
+      imageUrl: result.productImageUrl || '',
+      hexColors: result.topColorPicks.map(p => p.hex),
+      sizes: result.recommendedSize ? [result.recommendedSize] : undefined,
+      rating: 0,
+      reviewCount: 0,
+      affiliateUrl: result.productUrl || '',
+      tags: [],
+      matchScore: result.colorScore,
+      colorOptions: result.allOptions.map(o => ({
+        name: o.name,
+        hex: o.hex,
+        matchScore: o.matchScore,
+        url: o.url || result.productUrl || '',
+        imageUrl: o.imageUrl || result.productImageUrl || '',
+      }))
+    }
+  }
 
   const fileRef = useRef<HTMLInputElement>(null)
   const palette = userProfile?.palette ?? null
@@ -115,7 +100,7 @@ export default function CheckPage() {
       setResult(r)
 
       saveAnalysis({
-        id: `analysis-${Date.now()}`,
+        id: crypto.randomUUID(),
         savedAt: new Date().toISOString(),
         productName: r.productName,
         productBrand: r.productBrand,
@@ -286,75 +271,19 @@ export default function CheckPage() {
                 )}
               </>
             ) : (
-              <div className="space-y-6">
-                <button
-                  onClick={resetForm}
-                  className="text-stone-600 hover:text-stone-900 text-sm font-medium"
-                >
-                  ← Analyze another item
-                </button>
-                <div className="bg-white rounded-lg border border-stone-200 p-6 space-y-6">
-                  <div className="flex items-start gap-4">
-                    {result.productImageUrl && (
-                      <img src={result.productImageUrl} alt={result.productName} className="w-32 h-32 object-cover rounded" />
-                    )}
-                    <div className="flex-1">
-                      <p className="text-sm text-stone-500">{result.productBrand}</p>
-                      <p className="text-xl font-semibold text-stone-900">{result.productName}</p>
-                      {result.productPrice && (
-                        <p className="text-lg text-stone-700 mt-1">${result.productPrice}</p>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Color Score */}
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <p className="font-medium text-stone-900">Color Match</p>
-                      <div className="flex items-center gap-2">
-                        <span className={`px-2 py-1 rounded text-xs font-semibold ${verdictData(result.colorVerdict as Verdict).pill}`}>
-                          {verdictData(result.colorVerdict as Verdict).emoji} {verdictData(result.colorVerdict as Verdict).label}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <ScoreBar score={result.colorScore} color={verdictData(result.colorVerdict as Verdict).bar} />
-                      <span className="text-sm font-medium text-stone-600">{result.colorScore}%</span>
-                    </div>
-                    <p className="text-sm text-stone-600 mt-2">{result.colorReasoning}</p>
-                  </div>
-
-                  {/* Overall recommendation */}
-                  <div className="bg-stone-50 rounded-lg p-4">
-                    <p className="text-sm text-stone-600"><strong>Recommendation:</strong> {result.overallRecommendation}</p>
-                  </div>
-
-                  {/* Top Color Picks */}
-                  {result.topColorPicks.length > 0 && (
-                    <div className="space-y-2">
-                      <p className="font-medium text-stone-900">Top Color Picks</p>
-                      <div className="grid grid-cols-2 gap-3">
-                        {result.topColorPicks.slice(0, 4).map((pick, i) => (
-                          <div key={i} className="flex items-center gap-2 p-3 bg-stone-50 rounded">
-                            <div className="w-6 h-6 rounded border border-stone-200" style={{ backgroundColor: pick.hex }} />
-                            <div className="flex-1 min-w-0">
-                              <p className="text-xs font-medium text-stone-900 truncate">{pick.name}</p>
-                              <p className="text-xs text-stone-500">{pick.matchScore}%</p>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
+              <AnalysisResultPanel
+                result={result}
+                onAnalyzeAnother={resetForm}
+                onAddedToCart={addedToCart}
+                onSetAddedToCart={setAddedToCart}
+              />
             )}
           </div>
         )}
 
         {/* History Tab */}
         {activeTab === 'history' && (
-          <div className="space-y-4">
+          <div className="space-y-6">
             {analyses.length === 0 ? (
               <div className="text-center py-12">
                 <svg className="w-12 h-12 text-stone-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -364,47 +293,14 @@ export default function CheckPage() {
                 <p className="text-stone-400 text-sm">Start by uploading a photo or link in the Upload tab</p>
               </div>
             ) : (
-              <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
                 {analyses.map((analysis) => (
-                  <div key={analysis.id} className="bg-white rounded-lg border border-stone-200 p-4 hover:shadow-md transition-shadow">
-                    <div className="flex items-start gap-4">
-                      {analysis.productImageUrl && (
-                        <img
-                          src={analysis.productImageUrl}
-                          alt={analysis.productName}
-                          className="w-20 h-20 object-cover rounded"
-                        />
-                      )}
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm text-stone-500">{analysis.productBrand}</p>
-                        <p className="font-medium text-stone-900 truncate">{analysis.productName}</p>
-                        <p className="text-sm text-stone-500 mt-0.5">
-                          {new Date(analysis.savedAt).toLocaleDateString()}
-                        </p>
-                        <div className="flex items-center gap-4 mt-2">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-medium text-stone-600">Score:</span>
-                            <ScoreBar score={analysis.colorScore} color="#059669" />
-                            <span className="text-xs font-medium text-stone-600">{analysis.colorScore}%</span>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => toggleFavoriteAnalysis(analysis.id)}
-                          className="text-xl hover:scale-110 transition-transform"
-                        >
-                          {analysis.isFavorited ? '❤️' : '🤍'}
-                        </button>
-                        <button
-                          onClick={() => deleteAnalysis(analysis.id)}
-                          className="text-stone-400 hover:text-red-500 transition-colors"
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    </div>
-                  </div>
+                  <AnalysisCard
+                    key={analysis.id}
+                    analysis={analysis}
+                    onDelete={deleteAnalysis}
+                    onToggleFavorite={toggleFavoriteAnalysis}
+                  />
                 ))}
               </div>
             )}

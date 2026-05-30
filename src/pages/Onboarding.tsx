@@ -71,11 +71,19 @@ export default function Onboarding() {
   useEffect(() => {
     // Wait until AppContext has finished its initial data load
     if (user && initialized && !dataLoading) {
+      console.log('Onboarding effect:', {
+        hasUser: !!user,
+        hasPalette: !!userProfile?.palette,
+        userProfileId: userProfile?.id,
+        step
+      })
       if (userProfile?.palette) {
         // Account already completed onboarding -> go directly to Discover
+        console.log('User has palette, redirecting to feed')
         setCurrentPage('feed')
       } else if (step === 'intro') {
         // New account -> skip intro and go to step 2 (photo upload)
+        console.log('New user, skipping intro, going to upload')
         setName(user.user_metadata?.name ?? '')
         setUsername(user.user_metadata?.username ?? '')
         setStep('upload')
@@ -249,8 +257,12 @@ export default function Onboarding() {
     }
   }
 
-  const finish = () => {
-    if (!palette) return
+  const finish = async () => {
+    console.log('finish() called, palette:', palette)
+    if (!palette) {
+      console.warn('finish() called but palette is not set!')
+      return
+    }
     const hasBodyData = bodyType || height || bust || waist || hips || shirtSize || braSize || pantsSize || waistRise || shoeSize
     const profile: UserProfile = {
       id: user?.id ?? crypto.randomUUID(),
@@ -272,7 +284,19 @@ export default function Onboarding() {
       } : undefined,
       faceAnalysis: faceAnalysis || undefined,
     }
-    setUserProfile(profile)
+    console.log('Profile to save:', {
+      id: profile.id,
+      name: profile.name,
+      hasPalette: !!profile.palette,
+      paletteSeasonType: profile.palette?.seasonalType
+    })
+    try {
+      await setUserProfile(profile)
+      console.log('Profile saved successfully')
+    } catch (err) {
+      console.error('Error during profile save:', err)
+    }
+    // Always proceed to feed page, even if save fails (will be retried)
     setCurrentPage('feed')
   }
 
